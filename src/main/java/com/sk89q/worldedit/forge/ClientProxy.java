@@ -18,7 +18,7 @@ package com.sk89q.worldedit.forge;
 
 import net.minecraftforge.common.MinecraftForge;
 
-import com.gtnh.sculptor.client.SculptorKeyHandler;
+import com.gtnh.sculptor.client.SculptorBrushTool;
 import com.gtnh.sculptor.render.GhostRenderer;
 
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -32,10 +32,13 @@ public class ClientProxy extends CommonProxy {
             .bus()
             .register(new KeyHandler());
 
-        // Sculptor. Key input arrives on the FML bus; RenderWorldLastEvent on the Forge bus.
+        // Sculptor. Key input and ticks arrive on the FML bus; mouse, overlay and
+        // RenderWorldLastEvent on the Forge bus, so the brush tool needs both.
+        SculptorBrushTool brushTool = new SculptorBrushTool();
         FMLCommonHandler.instance()
             .bus()
-            .register(new SculptorKeyHandler());
+            .register(brushTool);
+        MinecraftForge.EVENT_BUS.register(brushTool);
         MinecraftForge.EVENT_BUS.register(GhostRenderer.instance());
     }
 

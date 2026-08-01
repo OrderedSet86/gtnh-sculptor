@@ -30,7 +30,7 @@ multiplayer.
 Early. Working so far:
 
 - [x] Preview capture (`PreviewExtent`, `EditSession` preview mode)
-- [ ] Ghost renderer
+- [x] Ghost renderer (`PreviewWorld`, `GhostRenderer`)
 - [ ] Brush interaction loop
 - [ ] Editor panel
 - [ ] Camera
