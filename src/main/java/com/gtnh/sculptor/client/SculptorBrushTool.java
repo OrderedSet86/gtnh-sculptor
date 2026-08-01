@@ -69,6 +69,20 @@ public class SculptorBrushTool {
     private static final int MIN_RADIUS = 1;
     private static final int MAX_RADIUS = 20;
 
+    /**
+     * How far the brush can reach, in blocks.
+     *
+     * <p>
+     * Vanilla's {@code objectMouseOver} stops at the player's block reach (about 5 blocks),
+     * which is useless for shaping terrain you are standing back from. This traces the same way
+     * vanilla does -- {@code EntityRenderer.getMouseOver} is just
+     * {@code renderViewEntity.rayTrace(reach, partialTicks)} -- only further, so targeting still
+     * agrees with where the crosshair points. The cost of a trace is linear in distance, so this
+     * is kept near a typical render distance rather than WorldEdit's 500.
+     * </p>
+     */
+    private static final double REACH = 160.0D;
+
     private boolean active;
     private int radius = 5;
 
@@ -77,6 +91,7 @@ public class SculptorBrushTool {
     private boolean hasPreview;
 
     private int previewedBlocks;
+    private double targetDistance;
 
     public SculptorBrushTool() {
         ClientRegistry.registerKeyBinding(TOGGLE_KEY);
@@ -124,7 +139,7 @@ public class SculptorBrushTool {
             return;
         }
 
-        MovingObjectPosition hit = mc.objectMouseOver;
+        MovingObjectPosition hit = (mc.renderViewEntity != null) ? mc.renderViewEntity.rayTrace(REACH, 1.0F) : null;
         if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
             clearPreview();
             return;
@@ -157,6 +172,7 @@ public class SculptorBrushTool {
             lastZ = z;
             lastRadius = radius;
             hasPreview = true;
+            targetDistance = mc.thePlayer.getDistance(x + 0.5D, y + 0.5D, z + 0.5D);
         } catch (Exception e) {
             clearPreview();
             say(mc, "Sculptor: preview failed: " + e);
@@ -187,10 +203,10 @@ public class SculptorBrushTool {
         Minecraft mc = Minecraft.getMinecraft();
         ScaledResolution res = new ScaledResolution(mc, mc.displayWidth, mc.displayHeight);
 
-        String line = String.format(
-            "Sculptor  sphere  r=%d  %s",
-            radius,
-            hasPreview ? (previewedBlocks + " blocks  [V] commit") : "no target");
+        String line = hasPreview
+            ? String
+                .format("Sculptor  sphere  r=%d  %d blocks  %.0fm  [V] commit", radius, previewedBlocks, targetDistance)
+            : String.format("Sculptor  sphere  r=%d  no target", radius);
 
         mc.fontRenderer.drawStringWithShadow(line, 4, res.getScaledHeight() - 20, 0xFFFFAA00);
     }

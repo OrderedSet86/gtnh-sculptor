@@ -66,6 +66,17 @@ public class SculptorNetwork {
     /** Brush radius is clamped server-side; a client is not trusted to bound its own edits. */
     private static final int MAX_RADIUS = 64;
 
+    /**
+     * How far from the player a commit may land, in blocks.
+     *
+     * <p>
+     * The client brush reaches 160 blocks, so this has to allow that, but it should not allow
+     * arbitrary edits anywhere in the world from a crafted packet. Squared to avoid a square
+     * root per commit.
+     * </p>
+     */
+    private static final double MAX_COMMIT_DISTANCE_SQ = 192.0D * 192.0D;
+
     private static FMLEventChannel channel;
 
     private static final Queue<PendingCommit> queue = new ConcurrentLinkedQueue<PendingCommit>();
@@ -126,6 +137,13 @@ public class SculptorNetwork {
         if (radius < 1 || radius > MAX_RADIUS) return;
 
         EntityPlayerMP player = ((NetHandlerPlayServer) event.handler).playerEntity;
+        if (player == null) return;
+
+        double dx = player.posX - (x + 0.5D);
+        double dy = player.posY - (y + 0.5D);
+        double dz = player.posZ - (z + 0.5D);
+        if (dx * dx + dy * dy + dz * dz > MAX_COMMIT_DISTANCE_SQ) return;
+
         queue.add(new PendingCommit(player, x, y, z, radius));
     }
 
