@@ -25,15 +25,14 @@ import net.minecraftforge.client.event.RenderGameOverlayEvent;
 
 import org.lwjgl.input.Keyboard;
 
+import com.cleanroommc.modularui.factory.ClientGUI;
+import com.gtnh.sculptor.brush.BrushSettings;
 import com.gtnh.sculptor.network.SculptorNetwork;
 import com.gtnh.sculptor.render.GhostRenderer;
 import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.Vector;
 import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.blocks.BaseBlock;
-import com.sk89q.worldedit.blocks.BlockID;
 import com.sk89q.worldedit.forge.ForgeWorldEdit;
-import com.sk89q.worldedit.patterns.SingleBlockPattern;
 
 import cpw.mods.fml.client.registry.ClientRegistry;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -45,16 +44,16 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  *
  * <p>
  * While sculpt mode is on, the brush is previewed continuously at whatever the crosshair is
- * pointing at, the scroll wheel changes its radius, and clicking commits. The preview is
- * rebuilt only when the target block or a brush parameter actually changes, so dragging the
- * crosshair around costs one bake per block crossed rather than one per frame.
+ * pointing at, the scroll wheel changes its radius, and V commits. The preview is rebuilt only
+ * when the target block or the brush configuration actually changes, so dragging the crosshair
+ * around costs one bake per block crossed rather than one per frame.
  * </p>
  *
  * <p>
  * Committing is deliberately not done here. The preview reads the client's copy of the world,
  * but the integrated server owns the blocks even in singleplayer, so a client-side write would
  * be reverted on the next chunk update. The commit is sent to the server, which replays the
- * same operation against a real {@link EditSession}. That is also exactly the shape multiplayer
+ * same brush against a real {@link EditSession}. That is also exactly the shape multiplayer
  * needs, so there is no separate path to write later.
  * </p>
  */
@@ -65,9 +64,10 @@ public class SculptorBrushTool {
         Keyboard.KEY_B,
         "Sculptor");
     private static final KeyBinding COMMIT_KEY = new KeyBinding("Sculptor: commit brush", Keyboard.KEY_V, "Sculptor");
-
-    private static final int MIN_RADIUS = 1;
-    private static final int MAX_RADIUS = 20;
+    private static final KeyBinding PANEL_KEY = new KeyBinding(
+        "Sculptor: open editor panel",
+        Keyboard.KEY_N,
+        "Sculptor");
 
     /**
      * How far the brush can reach, in blocks.
@@ -84,10 +84,9 @@ public class SculptorBrushTool {
     private static final double REACH = 160.0D;
 
     private boolean active;
-    private int radius = 5;
 
     /** What the last preview was built for, so we can tell when it is stale. */
-    private int lastX, lastY, lastZ, lastRadius;
+    private int lastX, lastY, lastZ, lastRevision;
     private boolean hasPreview;
 
     private int previewedBlocks;
@@ -96,6 +95,11 @@ public class SculptorBrushTool {
     public SculptorBrushTool() {
         ClientRegistry.registerKeyBinding(TOGGLE_KEY);
         ClientRegistry.registerKeyBinding(COMMIT_KEY);
+        ClientRegistry.registerKeyBinding(PANEL_KEY);
+    }
+
+    public boolean isActive() {
+        return active;
     }
 
     @SubscribeEvent
@@ -109,6 +113,10 @@ public class SculptorBrushTool {
                 clearPreview();
             }
             say(mc, active ? "Sculptor: sculpt mode ON" : "Sculptor: sculpt mode OFF");
+        }
+
+        if (PANEL_KEY.isPressed()) {
+            ClientGUI.open(new SculptorPanel());
         }
 
         if (active && COMMIT_KEY.isPressed()) {
@@ -126,7 +134,8 @@ public class SculptorBrushTool {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.thePlayer == null || mc.currentScreen != null) return;
 
-        radius = clamp(radius + (event.dwheel > 0 ? 1 : -1), MIN_RADIUS, MAX_RADIUS);
+        BrushSettings settings = BrushSettings.instance();
+        settings.setRadius(settings.getRadius() + (event.dwheel > 0 ? 1 : -1));
         event.setCanceled(true);
     }
 
@@ -147,20 +156,27 @@ public class SculptorBrushTool {
 
         // Only rebuild when something actually changed -- this is what keeps a dragged
         // crosshair from re-tessellating every frame.
-        if (hasPreview && hit.blockX == lastX && hit.blockY == lastY && hit.blockZ == lastZ && radius == lastRadius) {
+        int revision = BrushSettings.instance()
+            .getRevision();
+        if (hasPreview && hit.blockX == lastX
+            && hit.blockY == lastY
+            && hit.blockZ == lastZ
+            && revision == lastRevision) {
             return;
         }
 
-        updatePreview(mc, hit.blockX, hit.blockY, hit.blockZ);
+        updatePreview(mc, hit.blockX, hit.blockY, hit.blockZ, revision);
     }
 
-    private void updatePreview(Minecraft mc, int x, int y, int z) {
+    private void updatePreview(Minecraft mc, int x, int y, int z, int revision) {
+        BrushSettings settings = BrushSettings.instance();
         try {
             EditSession preview = WorldEdit.getInstance()
                 .getEditSessionFactory()
                 .getPreviewEditSession(ForgeWorldEdit.inst.getWorld(mc.theWorld), -1);
 
-            preview.makeSphere(new Vector(x, y, z), new SingleBlockPattern(new BaseBlock(BlockID.STONE)), radius, true);
+            settings.getBrush()
+                .apply(preview, new Vector(x, y, z), settings.getRadius(), settings.getMaterial());
 
             previewedBlocks = preview.getPendingChanges()
                 .size();
@@ -170,7 +186,7 @@ public class SculptorBrushTool {
             lastX = x;
             lastY = y;
             lastZ = z;
-            lastRadius = radius;
+            lastRevision = revision;
             hasPreview = true;
             targetDistance = mc.thePlayer.getDistance(x + 0.5D, y + 0.5D, z + 0.5D);
         } catch (Exception e) {
@@ -185,7 +201,15 @@ public class SculptorBrushTool {
             say(mc, "Sculptor: nothing to commit");
             return;
         }
-        SculptorNetwork.sendCommitSphere(lastX, lastY, lastZ, lastRadius);
+        BrushSettings settings = BrushSettings.instance();
+        SculptorNetwork.sendCommit(
+            settings.getBrush(),
+            lastX,
+            lastY,
+            lastZ,
+            settings.getRadius(),
+            settings.getMaterialId(),
+            settings.getMaterialData());
         clearPreview();
     }
 
@@ -201,18 +225,24 @@ public class SculptorBrushTool {
         if (!active || event.type != RenderGameOverlayEvent.ElementType.TEXT) return;
 
         Minecraft mc = Minecraft.getMinecraft();
+        BrushSettings settings = BrushSettings.instance();
         ScaledResolution res = new ScaledResolution(mc, mc.displayWidth, mc.displayHeight);
 
         String line = hasPreview
-            ? String
-                .format("Sculptor  sphere  r=%d  %d blocks  %.0fm  [V] commit", radius, previewedBlocks, targetDistance)
-            : String.format("Sculptor  sphere  r=%d  no target", radius);
+            ? String.format(
+                "Sculptor  %s  r=%d  %d blocks  %.0fm  [V] commit  [N] panel",
+                settings.getBrush()
+                    .label(),
+                settings.getRadius(),
+                previewedBlocks,
+                targetDistance)
+            : String.format(
+                "Sculptor  %s  r=%d  no target  [N] panel",
+                settings.getBrush()
+                    .label(),
+                settings.getRadius());
 
         mc.fontRenderer.drawStringWithShadow(line, 4, res.getScaledHeight() - 20, 0xFFFFAA00);
-    }
-
-    private static int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
     }
 
     private static void say(Minecraft mc, String message) {

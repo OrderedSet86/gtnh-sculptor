@@ -22,14 +22,13 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.network.NetHandlerPlayServer;
 import net.minecraft.util.ChatComponentText;
 
+import com.gtnh.sculptor.brush.SculptorBrush;
 import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.LocalSession;
 import com.sk89q.worldedit.Vector;
 import com.sk89q.worldedit.blocks.BaseBlock;
-import com.sk89q.worldedit.blocks.BlockID;
 import com.sk89q.worldedit.forge.ForgePlayer;
 import com.sk89q.worldedit.forge.ForgeWorldEdit;
-import com.sk89q.worldedit.patterns.SingleBlockPattern;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -47,7 +46,7 @@ import io.netty.buffer.Unpooled;
  * <p>
  * The client previews against its own copy of the world, but the server owns the blocks --
  * true even in singleplayer, where an integrated server is still running. So a commit is a
- * request, not a write: the client sends what brush it used and where, and the server replays
+ * request, not a write: the client sends which brush it used and where, and the server replays
  * it against a real {@link EditSession} bound to the player's {@link LocalSession}, which is
  * what makes {@code //undo} work afterwards.
  * </p>
@@ -61,7 +60,10 @@ public class SculptorNetwork {
 
     public static final String CHANNEL_NAME = "Sculptor";
 
-    private static final byte OP_COMMIT_SPHERE = 1;
+    private static final byte OP_COMMIT = 1;
+
+    /** byte op + byte brush + 3 ints pos + int radius + short id + byte data. */
+    private static final int COMMIT_PAYLOAD_BYTES = 1 + 12 + 4 + 2 + 1;
 
     /** Brush radius is clamped server-side; a client is not trusted to bound its own edits. */
     private static final int MAX_RADIUS = 64;
@@ -84,14 +86,19 @@ public class SculptorNetwork {
     private static final class PendingCommit {
 
         final EntityPlayerMP player;
-        final int x, y, z, radius;
+        final SculptorBrush brush;
+        final int x, y, z, radius, materialId, materialData;
 
-        PendingCommit(EntityPlayerMP player, int x, int y, int z, int radius) {
+        PendingCommit(EntityPlayerMP player, SculptorBrush brush, int x, int y, int z, int radius, int materialId,
+            int materialData) {
             this.player = player;
+            this.brush = brush;
             this.x = x;
             this.y = y;
             this.z = z;
             this.radius = radius;
+            this.materialId = materialId;
+            this.materialData = materialData;
         }
     }
 
@@ -105,14 +112,18 @@ public class SculptorNetwork {
             .register(handler);
     }
 
-    /** Client side: ask the server to apply a sphere. */
-    public static void sendCommitSphere(int x, int y, int z, int radius) {
+    /** Client side: ask the server to apply the given brush. */
+    public static void sendCommit(SculptorBrush brush, int x, int y, int z, int radius, int materialId,
+        int materialData) {
         ByteBuf buf = Unpooled.buffer();
-        buf.writeByte(OP_COMMIT_SPHERE);
+        buf.writeByte(OP_COMMIT);
+        buf.writeByte(brush.ordinal());
         buf.writeInt(x);
         buf.writeInt(y);
         buf.writeInt(z);
         buf.writeInt(radius);
+        buf.writeShort(materialId);
+        buf.writeByte(materialData);
 
         channel.sendToServer(new FMLProxyPacket(buf, CHANNEL_NAME));
     }
@@ -127,12 +138,15 @@ public class SculptorNetwork {
         if (buf.readableBytes() < 1) return;
 
         byte op = buf.readByte();
-        if (op != OP_COMMIT_SPHERE || buf.readableBytes() < 16) return;
+        if (op != OP_COMMIT || buf.readableBytes() < COMMIT_PAYLOAD_BYTES) return;
 
+        SculptorBrush brush = SculptorBrush.fromOrdinal(buf.readByte());
         int x = buf.readInt();
         int y = buf.readInt();
         int z = buf.readInt();
         int radius = buf.readInt();
+        int materialId = buf.readShort() & 0xFFFF;
+        int materialData = buf.readByte() & 0xF;
 
         if (radius < 1 || radius > MAX_RADIUS) return;
 
@@ -144,7 +158,7 @@ public class SculptorNetwork {
         double dz = player.posZ - (z + 0.5D);
         if (dx * dx + dy * dy + dz * dz > MAX_COMMIT_DISTANCE_SQ) return;
 
-        queue.add(new PendingCommit(player, x, y, z, radius));
+        queue.add(new PendingCommit(player, brush, x, y, z, radius, materialId, materialData));
     }
 
     @SubscribeEvent
@@ -165,19 +179,20 @@ public class SculptorNetwork {
 
             EditSession edit = session.createEditSession(player);
             try {
-                edit.makeSphere(
+                commit.brush.apply(
+                    edit,
                     new Vector(commit.x, commit.y, commit.z),
-                    new SingleBlockPattern(new BaseBlock(BlockID.STONE)),
                     commit.radius,
-                    true);
+                    new BaseBlock(commit.materialId, commit.materialData));
             } finally {
                 edit.flushQueue();
                 // Registering with the session is what puts this edit on the undo stack.
                 session.remember(edit);
             }
 
-            playerMP
-                .addChatMessage(new ChatComponentText("Sculptor: applied " + edit.getBlockChangeCount() + " blocks"));
+            playerMP.addChatMessage(
+                new ChatComponentText(
+                    "Sculptor: " + commit.brush.label() + " applied " + edit.getBlockChangeCount() + " blocks"));
         } catch (Exception e) {
             playerMP.addChatMessage(new ChatComponentText("Sculptor: commit failed: " + e));
             e.printStackTrace();

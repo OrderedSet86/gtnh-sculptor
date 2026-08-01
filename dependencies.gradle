@@ -58,6 +58,7 @@ dependencies {
     // its GL 3.3 core profile; we draw from RenderWorldLastEvent and must not touch the
     // terrain renderer it @Overwrites.
     implementation 'com.github.GTNewHorizons:GTNHLib:0.11.21:dev'
+    implementation 'com.github.GTNewHorizons:ModularUI2:2.3.79-1.7.10:dev'
     compileOnly('com.github.GTNewHorizons:Angelica:2.1.54:dev') { transitive = false }
     runtimeOnlyNonPublishable 'com.github.GTNewHorizons:Angelica:2.1.54:dev'
 
