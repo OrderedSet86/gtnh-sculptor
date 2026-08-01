@@ -31,9 +31,9 @@ Early. Working so far:
 
 - [x] Preview capture (`PreviewExtent`, `EditSession` preview mode)
 - [x] Ghost renderer (`PreviewWorld`, `GhostRenderer`)
-- [ ] Brush interaction loop
-- [ ] Editor panel
-- [ ] Camera
+- [x] Brush interaction loop
+- [x] Editor panel (ModularUI2, modal for now)
+- [x] Camera (free camera + keyframed paths)
 - [ ] Falloff/strength terrain brushes
 
 ## Building

@@ -18,6 +18,7 @@ package com.sk89q.worldedit.forge;
 
 import net.minecraftforge.common.MinecraftForge;
 
+import com.gtnh.sculptor.camera.SculptorCameraController;
 import com.gtnh.sculptor.client.SculptorBrushTool;
 import com.gtnh.sculptor.render.GhostRenderer;
 
@@ -40,6 +41,12 @@ public class ClientProxy extends CommonProxy {
             .register(brushTool);
         MinecraftForge.EVENT_BUS.register(brushTool);
         MinecraftForge.EVENT_BUS.register(GhostRenderer.instance());
+
+        SculptorCameraController camera = new SculptorCameraController();
+        FMLCommonHandler.instance()
+            .bus()
+            .register(camera);
+        MinecraftForge.EVENT_BUS.register(camera);
     }
 
 }
