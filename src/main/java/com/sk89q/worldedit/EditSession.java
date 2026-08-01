@@ -46,6 +46,7 @@ import com.sk89q.worldedit.extent.Extent;
 import com.sk89q.worldedit.extent.MaskingExtent;
 import com.sk89q.worldedit.extent.NullExtent;
 import com.sk89q.worldedit.extent.buffer.ForgetfulExtentBuffer;
+import com.sk89q.worldedit.extent.buffer.PreviewExtent;
 import com.sk89q.worldedit.extent.cache.LastAccessExtentCache;
 import com.sk89q.worldedit.extent.inventory.BlockBag;
 import com.sk89q.worldedit.extent.inventory.BlockBagExtent;
@@ -146,6 +147,7 @@ public class EditSession implements Extent {
     private final ChangeSet changeSet = new BlockOptimizedHistory();
 
     private @Nullable FastModeExtent fastModeExtent;
+    private @Nullable PreviewExtent previewExtent;
     private final SurvivalModeExtent survivalExtent;
     private @Nullable ChunkLoadingExtent chunkLoadingExtent;
     private @Nullable LastAccessExtentCache cacheExtent;
@@ -206,6 +208,32 @@ public class EditSession implements Extent {
      * @param event     the event to call with the extent
      */
     EditSession(EventBus eventBus, World world, int maxBlocks, @Nullable BlockBag blockBag, EditSessionEvent event) {
+        this(eventBus, world, maxBlocks, blockBag, event, false);
+    }
+
+    /**
+     * Construct the object with a maximum number of blocks and a block bag, optionally
+     * in preview mode.
+     *
+     * <p>
+     * In preview mode the root of the extent pipeline is a {@link PreviewExtent} rather
+     * than a {@link FastModeExtent}, so nothing is written to the world. Every other
+     * stage of the pipeline is unchanged, which means brushes and the {@code EditSession}
+     * shape operations behave identically -- they never learn they are not writing to the
+     * world. The captured changes are available from {@link #getPendingChanges()} and can
+     * be rendered as a preview, then committed by replaying the same operation against a
+     * normal {@code EditSession}.
+     * </p>
+     *
+     * @param eventBus  the event bus
+     * @param world     the world
+     * @param maxBlocks the maximum number of blocks that can be changed, or -1 to use no limit
+     * @param blockBag  an optional {@link BlockBag} to use, otherwise null
+     * @param event     the event to call with the extent
+     * @param preview   true to capture changes instead of applying them
+     */
+    EditSession(EventBus eventBus, World world, int maxBlocks, @Nullable BlockBag blockBag, EditSessionEvent event,
+        boolean preview) {
         checkNotNull(eventBus);
         checkArgument(maxBlocks >= -1, "maxBlocks >= -1 required");
         checkNotNull(event);
@@ -216,7 +244,11 @@ public class EditSession implements Extent {
             Extent extent;
 
             // These extents are ALWAYS used
-            extent = fastModeExtent = new FastModeExtent(world, false);
+            if (preview) {
+                extent = previewExtent = new PreviewExtent(world);
+            } else {
+                extent = fastModeExtent = new FastModeExtent(world, false);
+            }
             extent = survivalExtent = new SurvivalModeExtent(extent, world);
             extent = quirkExtent = new BlockQuirkExtent(extent, world);
             extent = chunkLoadingExtent = new ChunkLoadingExtent(extent, world);
@@ -274,6 +306,31 @@ public class EditSession implements Extent {
      */
     public ChangeSet getChangeSet() {
         return changeSet;
+    }
+
+    /**
+     * Return whether this session captures changes instead of applying them.
+     *
+     * @return true if this is a preview session
+     */
+    public boolean isPreview() {
+        return previewExtent != null;
+    }
+
+    /**
+     * Get the changes captured by a preview session.
+     *
+     * <p>
+     * Call {@link #flushQueue()} first if any reordering stage is active, otherwise
+     * pending writes may still be queued rather than captured.
+     * </p>
+     *
+     * @return an unmodifiable view of the captured changes in insertion order, or an
+     *         empty map if this is not a preview session
+     */
+    public Map<BlockVector, BaseBlock> getPendingChanges() {
+        return (previewExtent != null) ? previewExtent.getPendingChanges()
+            : Collections.<BlockVector, BaseBlock>emptyMap();
     }
 
     /**
@@ -451,12 +508,17 @@ public class EditSession implements Extent {
 
     @Override
     public BaseBlock getLazyBlock(Vector position) {
-        return world.getLazyBlock(position);
+        return (previewExtent != null) ? previewExtent.getLazyBlock(position) : world.getLazyBlock(position);
     }
 
     @Override
     public BaseBlock getBlock(Vector position) {
-        return world.getBlock(position);
+        // Reads normally bypass the extent chain and go straight to the world. In preview
+        // mode that would defeat the capture: operations which read back a position they
+        // just wrote (gravity, height maps, flood fills) would see the unmodified world and
+        // preview differently from how they commit. The preview extent delegates to the
+        // world, so untouched positions still read through.
+        return (previewExtent != null) ? previewExtent.getBlock(position) : world.getBlock(position);
     }
 
     /**
