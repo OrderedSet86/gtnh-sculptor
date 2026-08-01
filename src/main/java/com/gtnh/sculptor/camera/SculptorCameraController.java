@@ -188,8 +188,7 @@ public class SculptorCameraController {
             return;
         }
         if (playing) {
-            playing = false;
-            say(mc, "Sculptor: playback stopped");
+            stopPlayback(mc, "Sculptor: playback stopped");
             return;
         }
         if (path.size() < 2) {
@@ -199,6 +198,27 @@ public class SculptorCameraController {
         playing = true;
         playTick = 0;
         say(mc, "Sculptor: playing " + path.size() + " keyframes");
+    }
+
+    /**
+     * End playback, leaving the camera exactly where the path left it.
+     *
+     * <p>
+     * Free movement takes its orientation from the real player, who never turned while the path
+     * was playing. Without handing the camera's final angles back, the view would snap to
+     * whatever direction the player happened to be facing the moment playback stopped -- which
+     * reads as a jarring cut, usually toward terrain that has not been rendered yet.
+     * </p>
+     */
+    private void stopPlayback(Minecraft mc, String message) {
+        playing = false;
+        if (camera != null && mc.thePlayer != null) {
+            mc.thePlayer.rotationYaw = camera.rotationYaw;
+            mc.thePlayer.rotationPitch = camera.rotationPitch;
+            mc.thePlayer.prevRotationYaw = camera.rotationYaw;
+            mc.thePlayer.prevRotationPitch = camera.rotationPitch;
+        }
+        say(mc, message);
     }
 
     @SubscribeEvent
@@ -280,8 +300,7 @@ public class SculptorCameraController {
         int totalTicks = segments * TICKS_PER_SEGMENT;
 
         if (playTick >= totalTicks) {
-            playing = false;
-            say(mc, "Sculptor: playback finished");
+            stopPlayback(mc, "Sculptor: playback finished");
             return;
         }
 
@@ -302,7 +321,13 @@ public class SculptorCameraController {
         float yaw = p1.yaw + (float) (wrapDegrees(p2.yaw - p1.yaw) * t);
         float pitch = p1.pitch + (float) ((p2.pitch - p1.pitch) * t);
 
-        camera.moveTo(x, y, z, yaw, pitch);
+        if (playTick == 0) {
+            // The jump from wherever the camera was parked to the first keyframe is a cut, not
+            // a movement; interpolating it would smear across the gap for one frame.
+            camera.setPositionAndRotationDirect(x, y, z, yaw, pitch);
+        } else {
+            camera.moveTo(x, y, z, yaw, pitch);
+        }
         playTick++;
     }
 

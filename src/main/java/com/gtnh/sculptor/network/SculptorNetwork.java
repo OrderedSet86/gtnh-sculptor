@@ -62,11 +62,14 @@ public class SculptorNetwork {
 
     private static final byte OP_COMMIT = 1;
 
-    /** byte op + byte brush + 3 ints pos + int radius + short id + byte data. */
-    private static final int COMMIT_PAYLOAD_BYTES = 1 + 12 + 4 + 2 + 1;
+    /** byte brush + 3 ints pos + int radius + short id + byte data + short secondary + byte strength. */
+    private static final int COMMIT_PAYLOAD_BYTES = 1 + 12 + 4 + 2 + 1 + 2 + 1;
 
     /** Brush radius is clamped server-side; a client is not trusted to bound its own edits. */
     private static final int MAX_RADIUS = 64;
+
+    /** Upper bound for a brush's second parameter, whatever that brush means by it. */
+    private static final int MAX_SECONDARY = 64;
 
     /**
      * How far from the player a commit may land, in blocks.
@@ -87,10 +90,11 @@ public class SculptorNetwork {
 
         final EntityPlayerMP player;
         final SculptorBrush brush;
-        final int x, y, z, radius, materialId, materialData;
+        final int x, y, z, radius, materialId, materialData, secondary;
+        final double strength;
 
         PendingCommit(EntityPlayerMP player, SculptorBrush brush, int x, int y, int z, int radius, int materialId,
-            int materialData) {
+            int materialData, int secondary, double strength) {
             this.player = player;
             this.brush = brush;
             this.x = x;
@@ -99,6 +103,8 @@ public class SculptorNetwork {
             this.radius = radius;
             this.materialId = materialId;
             this.materialData = materialData;
+            this.secondary = secondary;
+            this.strength = strength;
         }
     }
 
@@ -114,7 +120,7 @@ public class SculptorNetwork {
 
     /** Client side: ask the server to apply the given brush. */
     public static void sendCommit(SculptorBrush brush, int x, int y, int z, int radius, int materialId,
-        int materialData) {
+        int materialData, int secondary, double strength) {
         ByteBuf buf = Unpooled.buffer();
         buf.writeByte(OP_COMMIT);
         buf.writeByte(brush.ordinal());
@@ -124,6 +130,9 @@ public class SculptorNetwork {
         buf.writeInt(radius);
         buf.writeShort(materialId);
         buf.writeByte(materialData);
+        buf.writeShort(secondary);
+        // Strength is 0..1; a byte of hundredths is finer than the control that produces it.
+        buf.writeByte((int) Math.round(strength * 100.0D));
 
         channel.sendToServer(new FMLProxyPacket(buf, CHANNEL_NAME));
     }
@@ -147,8 +156,11 @@ public class SculptorNetwork {
         int radius = buf.readInt();
         int materialId = buf.readShort() & 0xFFFF;
         int materialData = buf.readByte() & 0xF;
+        int secondary = buf.readShort();
+        double strength = Math.max(0.05D, Math.min(1.0D, (buf.readByte() & 0xFF) / 100.0D));
 
         if (radius < 1 || radius > MAX_RADIUS) return;
+        if (secondary < 0 || secondary > MAX_SECONDARY) return;
 
         EntityPlayerMP player = ((NetHandlerPlayServer) event.handler).playerEntity;
         if (player == null) return;
@@ -158,7 +170,7 @@ public class SculptorNetwork {
         double dz = player.posZ - (z + 0.5D);
         if (dx * dx + dy * dy + dz * dz > MAX_COMMIT_DISTANCE_SQ) return;
 
-        queue.add(new PendingCommit(player, brush, x, y, z, radius, materialId, materialData));
+        queue.add(new PendingCommit(player, brush, x, y, z, radius, materialId, materialData, secondary, strength));
     }
 
     @SubscribeEvent
@@ -183,7 +195,9 @@ public class SculptorNetwork {
                     edit,
                     new Vector(commit.x, commit.y, commit.z),
                     commit.radius,
-                    new BaseBlock(commit.materialId, commit.materialData));
+                    new BaseBlock(commit.materialId, commit.materialData),
+                    commit.secondary,
+                    commit.strength);
             } finally {
                 edit.flushQueue();
                 // Registering with the session is what puts this edit on the undo stack.

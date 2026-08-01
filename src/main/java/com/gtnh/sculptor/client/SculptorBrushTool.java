@@ -176,7 +176,13 @@ public class SculptorBrushTool {
                 .getPreviewEditSession(ForgeWorldEdit.inst.getWorld(mc.theWorld), -1);
 
             settings.getBrush()
-                .apply(preview, new Vector(x, y, z), settings.getRadius(), settings.getMaterial());
+                .apply(
+                    preview,
+                    new Vector(x, y, z),
+                    settings.getRadius(),
+                    settings.getMaterial(),
+                    settings.getSecondary(),
+                    settings.getStrength());
 
             previewedBlocks = preview.getPendingChanges()
                 .size();
@@ -209,7 +215,9 @@ public class SculptorBrushTool {
             lastZ,
             settings.getRadius(),
             settings.getMaterialId(),
-            settings.getMaterialData());
+            settings.getMaterialData(),
+            settings.getSecondary(),
+            settings.getStrength());
         clearPreview();
     }
 

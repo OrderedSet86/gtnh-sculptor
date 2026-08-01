@@ -28,6 +28,7 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.SliderWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.gtnh.sculptor.brush.BrushSettings;
+import com.gtnh.sculptor.brush.SculptorBrush;
 
 /**
  * The editor panel: pick a brush, set its radius, choose the material.
@@ -47,8 +48,17 @@ import com.gtnh.sculptor.brush.BrushSettings;
 public class SculptorPanel extends CustomModularScreen {
 
     private static final int PANEL_WIDTH = 176;
-    private static final int PANEL_HEIGHT = 166;
+    private static final int PANEL_HEIGHT = 214;
     private static final int ROW_HEIGHT = 18;
+
+    /**
+     * The second parameter means something different per brush and has a different range, but a
+     * slider's bounds are fixed when it is built. Rather than rebuild the panel on every brush
+     * change, the slider spans the widest range any brush uses and {@code BrushSettings} clamps
+     * to whatever the current brush actually allows -- so dragging past a brush's maximum pins
+     * there, and the label always shows the value in effect.
+     */
+    private static final int SECONDARY_SLIDER_MAX = 32;
 
     @Override
     public ModularPanel buildUI(ModularGuiContext context) {
@@ -126,6 +136,48 @@ public class SculptorPanel extends CustomModularScreen {
                     new DoubleValue.Dynamic(
                         () -> settings.getRadius(),
                         value -> settings.setRadius((int) Math.round(value))))
+                .size(PANEL_WIDTH - 16, ROW_HEIGHT)
+                .left(8)
+                .top(y));
+        y += ROW_HEIGHT + 6;
+
+        // --- Second parameter (cylinder height, smooth iterations, ...) ------------------
+        panel.child(new TextWidget<>(com.cleanroommc.modularui.api.drawable.IKey.dynamic(() -> {
+            SculptorBrush brush = settings.getBrush();
+            return brush.hasSecondary() ? brush.secondaryLabel() + ": " + settings.getSecondary()
+                : "(no second parameter)";
+        })).textAlign(Alignment.CenterLeft)
+            .left(8)
+            .top(y)
+            .height(ROW_HEIGHT));
+        y += ROW_HEIGHT;
+
+        panel.child(
+            new SliderWidget().bounds(1, SECONDARY_SLIDER_MAX)
+                .stopper(1)
+                .value(
+                    new DoubleValue.Dynamic(
+                        () -> settings.getSecondary(),
+                        value -> settings.setSecondary((int) Math.round(value))))
+                .size(PANEL_WIDTH - 16, ROW_HEIGHT)
+                .left(8)
+                .top(y));
+        y += ROW_HEIGHT + 6;
+
+        // --- Strength (terrain brushes) --------------------------------------------------
+        panel.child(new TextWidget<>(com.cleanroommc.modularui.api.drawable.IKey.dynamic(() -> {
+            SculptorBrush brush = settings.getBrush();
+            return brush.usesStrength() ? String.format("Strength: %.0f%%", settings.getStrength() * 100.0D)
+                : "(strength unused)";
+        })).textAlign(Alignment.CenterLeft)
+            .left(8)
+            .top(y)
+            .height(ROW_HEIGHT));
+        y += ROW_HEIGHT;
+
+        panel.child(
+            new SliderWidget().bounds(0.05D, 1.0D)
+                .value(new DoubleValue.Dynamic(() -> settings.getStrength(), settings::setStrength))
                 .size(PANEL_WIDTH - 16, ROW_HEIGHT)
                 .left(8)
                 .top(y));

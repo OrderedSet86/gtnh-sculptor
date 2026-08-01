@@ -39,6 +39,12 @@ public final class BrushSettings {
     private int materialId = BlockID.STONE;
     private int materialData = 0;
 
+    /** The brush's second parameter -- a cylinder's height, a smooth's iteration count. */
+    private int secondary = 1;
+
+    /** 0..1, how forcefully a terrain brush acts. */
+    private double strength = 0.5D;
+
     /** Bumped whenever anything changes, so the preview knows it is stale. */
     private int revision;
 
@@ -55,6 +61,36 @@ public final class BrushSettings {
     public void setBrush(SculptorBrush brush) {
         if (brush != null && brush != this.brush) {
             this.brush = brush;
+            // Each brush gives its second parameter a different meaning and range, so carrying
+            // a cylinder's height of 32 into a smooth's iteration count would be nonsense.
+            if (brush.hasSecondary()) {
+                this.secondary = Math.max(brush.secondaryMin(), Math.min(brush.secondaryMax(), this.secondary));
+            }
+            revision++;
+        }
+    }
+
+    public int getSecondary() {
+        return secondary;
+    }
+
+    public void setSecondary(int value) {
+        if (!brush.hasSecondary()) return;
+        int clamped = Math.max(brush.secondaryMin(), Math.min(brush.secondaryMax(), value));
+        if (clamped != this.secondary) {
+            this.secondary = clamped;
+            revision++;
+        }
+    }
+
+    public double getStrength() {
+        return strength;
+    }
+
+    public void setStrength(double value) {
+        double clamped = Math.max(0.05D, Math.min(1.0D, value));
+        if (clamped != this.strength) {
+            this.strength = clamped;
             revision++;
         }
     }
