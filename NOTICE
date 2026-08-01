@@ -1,0 +1,49 @@
+Sculptor
+========
+
+Sculptor is an interactive creative world editor for Minecraft 1.7.10 (GT New
+Horizons): brushes with live preview, an in-game editor panel, and a cinematic
+camera.
+
+It is not a port of, and contains no code from, any all-rights-reserved mod. It
+is an independent implementation built on the components listed below.
+
+
+Vendored code
+-------------
+
+This repository vendors WorldEdit, which provides the edit engine (EditSession,
+history, masks, patterns, clipboard, schematics).
+
+  WorldEdit
+    Copyright (C) sk89q <http://www.sk89q.com>
+    Copyright (C) WorldEdit team and contributors
+    Licensed under the GNU Lesser General Public License, version 3.
+    See LICENSE.
+
+  Source: https://github.com/GTNewHorizons/worldedit-gtnh
+    at commit e5623acbae3825f671ace73f3feaf76972580038,
+    itself a fork of https://github.com/EngineHub/WorldEdit
+    (branch forge-archive/1.7.10).
+
+The initial commit of this repository is an unmodified copy of that tree, so
+every Sculptor change is visible as a diff against it and upstream fixes can be
+cherry-picked.
+
+Sculptor's own additions are likewise licensed under the LGPL, version 3, as
+required by the above.
+
+
+Runtime dependencies
+--------------------
+
+Sculptor builds against the following, none of which are redistributed here:
+
+  Angelica, Celeritas    LGPL-3.0   GTNewHorizons
+  GTNHLib                LGPL-3.0   GTNewHorizons
+  ModularUI2             LGPL-3.0   GTNewHorizons / CleanroomMC
+  Freecam                LGPL-3.0   GTNewHorizons
+  lwjgl3ify              LGPL-3.0   GTNewHorizons
+  UniMixins              various    LegacyModdingMC
+
+Note: StructureLib is GPL-3.0, not LGPL, and is deliberately not linked.
