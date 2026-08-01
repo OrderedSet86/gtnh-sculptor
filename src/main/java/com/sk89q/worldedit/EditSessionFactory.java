@@ -197,6 +197,24 @@ public class EditSessionFactory {
     }
 
     /**
+     * Construct an edit session that captures changes instead of applying them.
+     *
+     * <p>
+     * Operations run against the returned session leave the world untouched; the changes they
+     * would have made are available from {@link EditSession#getPendingChanges()}. This is how
+     * a brush is previewed before the user commits to it -- the same operation is then
+     * replayed against a normal session to apply it for real.
+     * </p>
+     *
+     * @param world     the world
+     * @param maxBlocks the maximum number of blocks that can be changed, or -1 to use no limit
+     * @return a preview instance
+     */
+    public EditSession getPreviewEditSession(World world, int maxBlocks) {
+        throw new RuntimeException("Method needs to be implemented");
+    }
+
+    /**
      * Internal factory for {@link EditSession}s.
      */
     static final class EditSessionFactoryImpl extends EditSessionFactory {
@@ -251,6 +269,17 @@ public class EditSessionFactory {
                 maxBlocks,
                 blockBag,
                 new EditSessionEvent(world, player, maxBlocks, null));
+        }
+
+        @Override
+        public EditSession getPreviewEditSession(World world, int maxBlocks) {
+            return new EditSession(
+                eventBus,
+                world,
+                maxBlocks,
+                null,
+                new EditSessionEvent(world, null, maxBlocks, null),
+                true);
         }
 
     }

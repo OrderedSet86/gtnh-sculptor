@@ -16,6 +16,11 @@
 
 package com.sk89q.worldedit.forge;
 
+import net.minecraftforge.common.MinecraftForge;
+
+import com.gtnh.sculptor.client.SculptorKeyHandler;
+import com.gtnh.sculptor.render.GhostRenderer;
+
 import cpw.mods.fml.common.FMLCommonHandler;
 
 public class ClientProxy extends CommonProxy {
@@ -26,6 +31,12 @@ public class ClientProxy extends CommonProxy {
         FMLCommonHandler.instance()
             .bus()
             .register(new KeyHandler());
+
+        // Sculptor. Key input arrives on the FML bus; RenderWorldLastEvent on the Forge bus.
+        FMLCommonHandler.instance()
+            .bus()
+            .register(new SculptorKeyHandler());
+        MinecraftForge.EVENT_BUS.register(GhostRenderer.instance());
     }
 
 }

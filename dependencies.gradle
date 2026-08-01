@@ -52,5 +52,14 @@ dependencies {
 
     runtimeOnlyNonPublishable 'com.github.GTNewHorizons:NotEnoughItems:2.8.72-GTNH:dev'
 
+    // Sculptor: client-side editor. GTNHLib supplies the off-thread tessellation and the
+    // VBO/VAO/shader plumbing the ghost renderer is built on (TessellatorManager,
+    // IVertexArrayObject, ShaderProgram). Angelica is present so we render correctly under
+    // its GL 3.3 core profile; we draw from RenderWorldLastEvent and must not touch the
+    // terrain renderer it @Overwrites.
+    implementation 'com.github.GTNewHorizons:GTNHLib:0.11.21:dev'
+    compileOnly('com.github.GTNewHorizons:Angelica:2.1.54:dev') { transitive = false }
+    runtimeOnlyNonPublishable 'com.github.GTNewHorizons:Angelica:2.1.54:dev'
+
     testImplementation 'org.mockito:mockito-core:5.4.0'
 }
