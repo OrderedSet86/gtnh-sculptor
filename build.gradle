@@ -3,3 +3,16 @@
 plugins {
     id 'com.gtnewhorizons.gtnhconvention'
 }
+
+// Let the dev client join a server straight from launch, for testing the multiplayer commit
+// path without clicking through the server list every time:
+//     ./gradlew runServer
+//     ./gradlew runClient -PconnectTo=localhost
+// Vanilla already understands --server/--port; this only forwards them when asked, so the
+// normal runClient behaviour is unchanged.
+tasks.matching { it.name in ['runClient', 'runClient17', 'runClient21', 'runClient25'] }.configureEach {
+    if (project.hasProperty('connectTo')) {
+        args '--server', project.property('connectTo').toString()
+        args '--port', (project.findProperty('connectPort') ?: '25565').toString()
+    }
+}

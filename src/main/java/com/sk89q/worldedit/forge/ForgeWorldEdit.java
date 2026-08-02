@@ -68,18 +68,24 @@ import cpw.mods.fml.common.eventhandler.Event.Result;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 
 /**
- * The Forge implementation of WorldEdit.
+ * The Forge implementation of WorldEdit, as carried by Sculptor.
+ *
+ * <p>
+ * Sculptor vendors WorldEdit rather than depending on it, so it registers under its own mod id.
+ * It is a <em>replacement</em> for WorldEdit, not a companion to it: it contains all of
+ * WorldEdit and registers the same commands, so installing both would collide.
+ * </p>
  */
 @Mod(
     modid = ForgeWorldEdit.MOD_ID,
-    name = "WorldEdit",
+    name = "Sculptor",
     version = WETags.VERSION,
     acceptableRemoteVersions = "*",
     dependencies = "after:ForgeMultipart;after:ArchitectureCraft;after:CarpentersBlocks")
 public class ForgeWorldEdit {
 
     public static Logger logger;
-    public static final String MOD_ID = "worldedit";
+    public static final String MOD_ID = "sculptor";
     public static final String CUI_PLUGIN_CHANNEL = "WECUI";
 
     private ForgePermissionsProvider provider;
@@ -104,7 +110,9 @@ public class ForgeWorldEdit {
     public void preInit(FMLPreInitializationEvent event) {
         logger = event.getModLog();
         // Setup working directory
-        workingDir = new File(event.getModConfigurationDirectory() + File.separator + "worldedit");
+        // Own directory, not WorldEdit's: sharing it would mean reading and rewriting the
+        // config of a mod that may also be installed.
+        workingDir = new File(event.getModConfigurationDirectory() + File.separator + "sculptor");
         workingDir.mkdir();
 
         config = new ForgeConfiguration(this);
