@@ -62,6 +62,9 @@ public class SculptorNetwork {
 
     private static final byte OP_COMMIT = 1;
 
+    /** Permission required to apply a brush. */
+    private static final String PERMISSION_BRUSH = "sculptor.brush";
+
     /** byte brush + 3 ints pos + int radius + short id + byte data + short secondary + byte strength. */
     private static final int COMMIT_PAYLOAD_BYTES = 1 + 12 + 4 + 2 + 1 + 2 + 1;
 
@@ -187,6 +190,16 @@ public class SculptorNetwork {
         EntityPlayerMP playerMP = commit.player;
         try {
             ForgePlayer player = ForgeWorldEdit.inst.wrap(playerMP);
+
+            // A packet is a request from an untrusted client, so authorise it here rather than
+            // relying on the sender having the mod's UI. WorldEdit's own provider resolves this
+            // to op-or-creative by default, and to a real permission node if the server has a
+            // permissions mod, so Sculptor inherits whatever policy is already configured.
+            if (!player.hasPermission(PERMISSION_BRUSH)) {
+                playerMP.addChatMessage(new ChatComponentText("Sculptor: you do not have permission to edit"));
+                return;
+            }
+
             LocalSession session = ForgeWorldEdit.inst.getSession(playerMP);
 
             EditSession edit = session.createEditSession(player);

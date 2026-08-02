@@ -83,7 +83,23 @@ public class SculptorBrushTool {
      */
     private static final double REACH = 160.0D;
 
+    /**
+     * Ticks between repeats while the commit key is held.
+     *
+     * <p>
+     * Holding to build up an effect -- repeated smoothing passes especially -- needs a rate
+     * limit for two reasons. Committing every tick would flood the server with edits, and each
+     * commit only becomes visible to the client once the server has applied it and sent the
+     * chunk back, so firing faster than that round trip means later commits are computed from
+     * terrain that does not reflect the earlier ones.
+     * </p>
+     */
+    private static final int COMMIT_REPEAT_TICKS = 5;
+
     private boolean active;
+
+    /** Counts down between repeated commits while the key is held. */
+    private int commitCooldown;
 
     /** What the last preview was built for, so we can tell when it is stale. */
     private int lastX, lastY, lastZ, lastRevision;
@@ -119,9 +135,7 @@ public class SculptorBrushTool {
             ClientGUI.open(new SculptorPanel());
         }
 
-        if (active && COMMIT_KEY.isPressed()) {
-            commit(mc);
-        }
+        // Commit is driven from the tick instead of here, so that holding the key repeats.
     }
 
     /**
@@ -148,10 +162,19 @@ public class SculptorBrushTool {
             return;
         }
 
+        if (commitCooldown > 0) commitCooldown--;
+
         MovingObjectPosition hit = (mc.renderViewEntity != null) ? mc.renderViewEntity.rayTrace(REACH, 1.0F) : null;
         if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
             clearPreview();
             return;
+        }
+
+        // Held commit repeats on a timer. Checked before the preview refresh so a commit always
+        // uses the preview the player can currently see.
+        if (COMMIT_KEY.getIsKeyPressed() && commitCooldown == 0) {
+            commit(mc);
+            commitCooldown = COMMIT_REPEAT_TICKS;
         }
 
         // Only rebuild when something actually changed -- this is what keeps a dragged
@@ -203,10 +226,9 @@ public class SculptorBrushTool {
     }
 
     private void commit(Minecraft mc) {
-        if (!hasPreview) {
-            say(mc, "Sculptor: nothing to commit");
-            return;
-        }
+        // Silent rather than chatty: with a held key this would otherwise repeat every time the
+        // crosshair crossed the sky.
+        if (!hasPreview) return;
         BrushSettings settings = BrushSettings.instance();
         SculptorNetwork.sendCommit(
             settings.getBrush(),
@@ -218,7 +240,10 @@ public class SculptorBrushTool {
             settings.getMaterialData(),
             settings.getSecondary(),
             settings.getStrength());
-        clearPreview();
+
+        // Mark stale rather than clearing: the ghost stays on screen until the rebuild replaces
+        // it, which stops a held commit from strobing the preview on and off.
+        hasPreview = false;
     }
 
     private void clearPreview() {

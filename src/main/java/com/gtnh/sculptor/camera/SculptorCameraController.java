@@ -29,6 +29,8 @@ import net.minecraftforge.client.event.RenderGameOverlayEvent;
 
 import org.lwjgl.input.Keyboard;
 
+import com.gtnh.sculptor.camera.CameraSettings.PathSpeed;
+
 import cpw.mods.fml.client.registry.ClientRegistry;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.InputEvent.KeyInputEvent;
@@ -57,9 +59,17 @@ public class SculptorCameraController {
         "Sculptor: toggle free camera",
         Keyboard.KEY_C,
         "Sculptor");
-    private static final KeyBinding ADD_KEYFRAME_KEY = new KeyBinding(
-        "Sculptor: add camera keyframe",
+    private static final KeyBinding ADD_SLOW_KEY = new KeyBinding(
+        "Sculptor: add keyframe (slow approach)",
+        Keyboard.KEY_J,
+        "Sculptor");
+    private static final KeyBinding ADD_NORMAL_KEY = new KeyBinding(
+        "Sculptor: add keyframe (normal approach)",
         Keyboard.KEY_K,
+        "Sculptor");
+    private static final KeyBinding ADD_FAST_KEY = new KeyBinding(
+        "Sculptor: add keyframe (fast approach)",
+        Keyboard.KEY_M,
         "Sculptor");
     private static final KeyBinding PLAY_KEY = new KeyBinding("Sculptor: play camera path", Keyboard.KEY_P, "Sculptor");
     // Not L: WorldEdit already binds that to its reference GUI, and a shared binding would
@@ -69,24 +79,22 @@ public class SculptorCameraController {
         Keyboard.KEY_DELETE,
         "Sculptor");
 
-    /** Blocks per tick at normal speed. Sprint multiplies it. */
-    private static final double BASE_SPEED = 0.5D;
-    private static final double SPRINT_MULTIPLIER = 4.0D;
-
-    /** Ticks spent traversing each segment between keyframes. */
-    private static final int TICKS_PER_SEGMENT = 40;
+    private static final int TICKS_PER_SECOND = 20;
 
     private static final class Keyframe {
 
         final double x, y, z;
         final float yaw, pitch;
+        /** How fast to travel <em>into</em> this keyframe from the one before it. */
+        final PathSpeed speed;
 
-        Keyframe(double x, double y, double z, float yaw, float pitch) {
+        Keyframe(double x, double y, double z, float yaw, float pitch, PathSpeed speed) {
             this.x = x;
             this.y = y;
             this.z = z;
             this.yaw = yaw;
             this.pitch = pitch;
+            this.speed = speed;
         }
     }
 
@@ -98,9 +106,15 @@ public class SculptorCameraController {
     private boolean playing;
     private int playTick;
 
+    /** Tick length of each segment, derived from its length and its destination's speed tier. */
+    private int[] segmentTicks;
+    private int totalTicks;
+
     public SculptorCameraController() {
         ClientRegistry.registerKeyBinding(TOGGLE_KEY);
-        ClientRegistry.registerKeyBinding(ADD_KEYFRAME_KEY);
+        ClientRegistry.registerKeyBinding(ADD_SLOW_KEY);
+        ClientRegistry.registerKeyBinding(ADD_NORMAL_KEY);
+        ClientRegistry.registerKeyBinding(ADD_FAST_KEY);
         ClientRegistry.registerKeyBinding(PLAY_KEY);
         ClientRegistry.registerKeyBinding(CLEAR_KEY);
     }
@@ -128,9 +142,9 @@ public class SculptorCameraController {
             say(mc, "Sculptor: camera path cleared");
         }
 
-        if (ADD_KEYFRAME_KEY.isPressed()) {
-            addKeyframe(mc);
-        }
+        if (ADD_SLOW_KEY.isPressed()) addKeyframe(mc, PathSpeed.SLOW);
+        if (ADD_NORMAL_KEY.isPressed()) addKeyframe(mc, PathSpeed.NORMAL);
+        if (ADD_FAST_KEY.isPressed()) addKeyframe(mc, PathSpeed.FAST);
 
         if (PLAY_KEY.isPressed()) {
             togglePlayback(mc);
@@ -156,7 +170,7 @@ public class SculptorCameraController {
         player.movementInput = new MovementInput();
         player.motionX = player.motionY = player.motionZ = 0.0D;
 
-        say(mc, "Sculptor: free camera ON  [K] keyframe  [P] play  [Del] clear");
+        say(mc, "Sculptor: free camera ON  [J/K/M] keyframe slow/normal/fast  [P] play  [Del] clear");
     }
 
     private void detach(Minecraft mc) {
@@ -173,13 +187,13 @@ public class SculptorCameraController {
         say(mc, "Sculptor: free camera OFF");
     }
 
-    private void addKeyframe(Minecraft mc) {
+    private void addKeyframe(Minecraft mc, PathSpeed speed) {
         if (!isActive()) {
             say(mc, "Sculptor: enable the free camera first");
             return;
         }
-        path.add(new Keyframe(camera.posX, camera.posY, camera.posZ, camera.rotationYaw, camera.rotationPitch));
-        say(mc, "Sculptor: keyframe " + path.size() + " added");
+        path.add(new Keyframe(camera.posX, camera.posY, camera.posZ, camera.rotationYaw, camera.rotationPitch, speed));
+        say(mc, "Sculptor: keyframe " + path.size() + " added (" + speed.label() + " approach)");
     }
 
     private void togglePlayback(Minecraft mc) {
@@ -195,9 +209,46 @@ public class SculptorCameraController {
             say(mc, "Sculptor: need at least 2 keyframes");
             return;
         }
+
+        computeSegmentTimings();
         playing = true;
         playTick = 0;
-        say(mc, "Sculptor: playing " + path.size() + " keyframes");
+        say(mc, String.format("Sculptor: playing %d keyframes over %.1fs", path.size(), totalTicks / 20.0D));
+    }
+
+    /**
+     * Work out how long each segment should take.
+     *
+     * <p>
+     * A segment's duration is its length divided by the speed of the keyframe it arrives at, so
+     * the camera holds a constant rate rather than a constant time. That is what makes a long
+     * establishing move and a short detail move feel like the same camera.
+     * </p>
+     */
+    private void computeSegmentTimings() {
+        CameraSettings settings = CameraSettings.instance();
+        int segments = path.size() - 1;
+
+        segmentTicks = new int[segments];
+        totalTicks = 0;
+
+        for (int i = 0; i < segments; i++) {
+            Keyframe from = path.get(i);
+            Keyframe to = path.get(i + 1);
+
+            double dx = to.x - from.x;
+            double dy = to.y - from.y;
+            double dz = to.z - from.z;
+            double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+            double blocksPerSecond = settings.getPathSpeed(to.speed);
+            // A segment with no travel still needs a tick to turn the camera through, so this
+            // never rounds down to zero.
+            int ticks = (int) Math.max(1, Math.round(distance / blocksPerSecond * TICKS_PER_SECOND));
+
+            segmentTicks[i] = ticks;
+            totalTicks += ticks;
+        }
     }
 
     /**
@@ -263,9 +314,10 @@ public class SculptorCameraController {
         if (mc.gameSettings.keyBindJump.getIsKeyPressed()) vertical += 1.0D;
         if (mc.gameSettings.keyBindSneak.getIsKeyPressed()) vertical -= 1.0D;
 
-        double speed = BASE_SPEED;
+        CameraSettings settings = CameraSettings.instance();
+        double speed = settings.getFlySpeed() / TICKS_PER_SECOND;
         if (mc.gameSettings.keyBindSprint.getIsKeyPressed()) {
-            speed *= SPRINT_MULTIPLIER;
+            speed *= settings.getSprintMultiplier();
         }
 
         double x = camera.posX;
@@ -296,16 +348,21 @@ public class SculptorCameraController {
     }
 
     private void advancePlayback(Minecraft mc) {
-        int segments = path.size() - 1;
-        int totalTicks = segments * TICKS_PER_SEGMENT;
-
         if (playTick >= totalTicks) {
             stopPlayback(mc, "Sculptor: playback finished");
             return;
         }
 
-        int segment = playTick / TICKS_PER_SEGMENT;
-        double t = (playTick % TICKS_PER_SEGMENT) / (double) TICKS_PER_SEGMENT;
+        // Walk the cumulative timings to find which segment this tick falls in. Segments have
+        // different lengths now, so this cannot be a division.
+        int segment = 0;
+        int ticksIntoSegment = playTick;
+        while (segment < segmentTicks.length - 1 && ticksIntoSegment >= segmentTicks[segment]) {
+            ticksIntoSegment -= segmentTicks[segment];
+            segment++;
+        }
+
+        double t = ticksIntoSegment / (double) segmentTicks[segment];
 
         Keyframe p0 = path.get(Math.max(0, segment - 1));
         Keyframe p1 = path.get(segment);
@@ -354,8 +411,16 @@ public class SculptorCameraController {
         Minecraft mc = Minecraft.getMinecraft();
         ScaledResolution res = new ScaledResolution(mc, mc.displayWidth, mc.displayHeight);
 
-        String line = playing ? String.format("Camera  playing  %d/%d", (playTick / TICKS_PER_SEGMENT) + 1, path.size())
-            : String.format("Camera  free  %d keyframes  [K] add  [P] play  [Del] clear", path.size());
+        String line;
+        if (playing) {
+            line = String.format("Camera  playing  %.1fs / %.1fs", playTick / 20.0D, totalTicks / 20.0D);
+        } else {
+            line = String.format(
+                "Camera  free  %.0f b/s  %d keyframes  [J/K/M] add  [P] play  [Del] clear",
+                CameraSettings.instance()
+                    .getFlySpeed(),
+                path.size());
+        }
 
         mc.fontRenderer.drawStringWithShadow(line, 4, res.getScaledHeight() - 32, 0xFF66CCFF);
     }

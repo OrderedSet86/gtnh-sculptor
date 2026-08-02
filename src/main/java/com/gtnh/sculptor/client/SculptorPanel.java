@@ -19,6 +19,7 @@ import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
 
+import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.screen.CustomModularScreen;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
@@ -27,16 +28,19 @@ import com.cleanroommc.modularui.value.DoubleValue;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.SliderWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
+import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.gtnh.sculptor.brush.BrushSettings;
 import com.gtnh.sculptor.brush.SculptorBrush;
+import com.gtnh.sculptor.camera.CameraSettings;
+import com.gtnh.sculptor.camera.CameraSettings.PathSpeed;
 
 /**
- * The editor panel: pick a brush, set its radius, choose the material.
+ * The editor panel: brush settings on the left, camera speeds on the right.
  *
  * <p>
- * Everything here edits {@link BrushSettings}, which bumps a revision counter on change. The
- * brush loop watches that counter, so adjusting a value re-previews immediately -- there is no
- * apply button, and no way for the panel and the ghost to disagree.
+ * Everything here edits {@link BrushSettings} or {@link CameraSettings} directly. Brush changes
+ * bump a revision counter that the brush loop watches, so adjusting a value re-previews
+ * immediately -- there is no apply button, and no way for the panel and the ghost to disagree.
  * </p>
  *
  * <p>
@@ -47,9 +51,13 @@ import com.gtnh.sculptor.brush.SculptorBrush;
  */
 public class SculptorPanel extends CustomModularScreen {
 
-    private static final int PANEL_WIDTH = 176;
-    private static final int PANEL_HEIGHT = 214;
+    private static final int PANEL_WIDTH = 320;
+    private static final int PANEL_HEIGHT = 200;
     private static final int ROW_HEIGHT = 18;
+
+    private static final int LEFT_X = 8;
+    private static final int RIGHT_X = 168;
+    private static final int COLUMN_WIDTH = 144;
 
     /**
      * The second parameter means something different per brush and has a different range, but a
@@ -63,31 +71,33 @@ public class SculptorPanel extends CustomModularScreen {
     @Override
     public ModularPanel buildUI(ModularGuiContext context) {
         ModularPanel panel = ModularPanel.defaultPanel("sculptor", PANEL_WIDTH, PANEL_HEIGHT);
-        BrushSettings settings = BrushSettings.instance();
-
-        int y = 6;
+        BrushSettings brush = BrushSettings.instance();
+        CameraSettings camera = CameraSettings.instance();
 
         panel.child(
             new TextWidget<>("Sculptor").scale(1.2f)
                 .textAlign(Alignment.Center)
                 .left(0)
                 .right(0)
-                .top(y)
+                .top(6)
                 .height(ROW_HEIGHT));
-        y += ROW_HEIGHT + 4;
 
-        // --- Brush selection -------------------------------------------------------------
-        panel.child(
-            new TextWidget<>("Brush").textAlign(Alignment.CenterLeft)
-                .left(8)
-                .top(y)
-                .height(ROW_HEIGHT));
+        buildBrushColumn(panel, brush);
+        buildCameraColumn(panel, camera);
+
+        return panel;
+    }
+
+    private void buildBrushColumn(ModularPanel panel, BrushSettings settings) {
+        int y = 28;
+
+        panel.child(label("Brush", LEFT_X, y));
         y += ROW_HEIGHT;
 
         panel.child(
-            new ButtonWidget<>().overlay(com.cleanroommc.modularui.api.drawable.IKey.dynamic(() -> "<"))
+            new ButtonWidget<>().overlay(IKey.str("<"))
                 .size(16, ROW_HEIGHT)
-                .left(8)
+                .left(LEFT_X)
                 .top(y)
                 .onMousePressed(button -> {
                     settings.setBrush(
@@ -98,18 +108,18 @@ public class SculptorPanel extends CustomModularScreen {
 
         panel.child(
             new TextWidget<>(
-                com.cleanroommc.modularui.api.drawable.IKey.dynamic(
+                IKey.dynamic(
                     () -> settings.getBrush()
                         .label())).textAlign(Alignment.Center)
-                            .left(28)
-                            .right(28)
+                            .left(LEFT_X + 20)
+                            .width(COLUMN_WIDTH - 40)
                             .top(y)
                             .height(ROW_HEIGHT));
 
         panel.child(
-            new ButtonWidget<>().overlay(com.cleanroommc.modularui.api.drawable.IKey.dynamic(() -> ">"))
+            new ButtonWidget<>().overlay(IKey.str(">"))
                 .size(16, ROW_HEIGHT)
-                .right(8)
+                .left(LEFT_X + COLUMN_WIDTH - 16)
                 .top(y)
                 .onMousePressed(button -> {
                     settings.setBrush(
@@ -117,18 +127,10 @@ public class SculptorPanel extends CustomModularScreen {
                             .next());
                     return true;
                 }));
-        y += ROW_HEIGHT + 6;
+        y += ROW_HEIGHT + 4;
 
-        // --- Radius ----------------------------------------------------------------------
-        panel.child(
-            new TextWidget<>(
-                com.cleanroommc.modularui.api.drawable.IKey.dynamic(() -> "Radius: " + settings.getRadius()))
-                    .textAlign(Alignment.CenterLeft)
-                    .left(8)
-                    .top(y)
-                    .height(ROW_HEIGHT));
-        y += ROW_HEIGHT;
-
+        panel.child(dynamicLabel(() -> "Radius: " + settings.getRadius(), LEFT_X, y));
+        y += 12;
         panel.child(
             new SliderWidget().bounds(BrushSettings.MIN_RADIUS, BrushSettings.MAX_RADIUS)
                 .stopper(1)
@@ -136,22 +138,16 @@ public class SculptorPanel extends CustomModularScreen {
                     new DoubleValue.Dynamic(
                         () -> settings.getRadius(),
                         value -> settings.setRadius((int) Math.round(value))))
-                .size(PANEL_WIDTH - 16, ROW_HEIGHT)
-                .left(8)
+                .size(COLUMN_WIDTH, 14)
+                .left(LEFT_X)
                 .top(y));
-        y += ROW_HEIGHT + 6;
+        y += 20;
 
-        // --- Second parameter (cylinder height, smooth iterations, ...) ------------------
-        panel.child(new TextWidget<>(com.cleanroommc.modularui.api.drawable.IKey.dynamic(() -> {
-            SculptorBrush brush = settings.getBrush();
-            return brush.hasSecondary() ? brush.secondaryLabel() + ": " + settings.getSecondary()
-                : "(no second parameter)";
-        })).textAlign(Alignment.CenterLeft)
-            .left(8)
-            .top(y)
-            .height(ROW_HEIGHT));
-        y += ROW_HEIGHT;
-
+        panel.child(dynamicLabel(() -> {
+            SculptorBrush b = settings.getBrush();
+            return b.hasSecondary() ? b.secondaryLabel() + ": " + settings.getSecondary() : "(no second parameter)";
+        }, LEFT_X, y));
+        y += 12;
         panel.child(
             new SliderWidget().bounds(1, SECONDARY_SLIDER_MAX)
                 .stopper(1)
@@ -159,51 +155,104 @@ public class SculptorPanel extends CustomModularScreen {
                     new DoubleValue.Dynamic(
                         () -> settings.getSecondary(),
                         value -> settings.setSecondary((int) Math.round(value))))
-                .size(PANEL_WIDTH - 16, ROW_HEIGHT)
-                .left(8)
+                .size(COLUMN_WIDTH, 14)
+                .left(LEFT_X)
                 .top(y));
-        y += ROW_HEIGHT + 6;
+        y += 20;
 
-        // --- Strength (terrain brushes) --------------------------------------------------
-        panel.child(new TextWidget<>(com.cleanroommc.modularui.api.drawable.IKey.dynamic(() -> {
-            SculptorBrush brush = settings.getBrush();
-            return brush.usesStrength() ? String.format("Strength: %.0f%%", settings.getStrength() * 100.0D)
+        panel.child(dynamicLabel(() -> {
+            SculptorBrush b = settings.getBrush();
+            return b.usesStrength() ? String.format("Strength: %.0f%%", settings.getStrength() * 100.0D)
                 : "(strength unused)";
-        })).textAlign(Alignment.CenterLeft)
-            .left(8)
-            .top(y)
-            .height(ROW_HEIGHT));
-        y += ROW_HEIGHT;
-
+        }, LEFT_X, y));
+        y += 12;
         panel.child(
             new SliderWidget().bounds(0.05D, 1.0D)
-                .value(new DoubleValue.Dynamic(() -> settings.getStrength(), settings::setStrength))
-                .size(PANEL_WIDTH - 16, ROW_HEIGHT)
-                .left(8)
+                .value(new DoubleValue.Dynamic(settings::getStrength, settings::setStrength))
+                .size(COLUMN_WIDTH, 14)
+                .left(LEFT_X)
                 .top(y));
-        y += ROW_HEIGHT + 6;
+        y += 20;
 
-        // --- Material --------------------------------------------------------------------
+        panel.child(dynamicLabel(() -> "Material: " + materialName(settings), LEFT_X, y));
+        y += 12;
         panel.child(
-            new TextWidget<>(
-                com.cleanroommc.modularui.api.drawable.IKey.dynamic(() -> "Material: " + materialName(settings)))
-                    .textAlign(Alignment.CenterLeft)
-                    .left(8)
-                    .top(y)
-                    .height(ROW_HEIGHT));
-        y += ROW_HEIGHT;
-
-        panel.child(
-            new ButtonWidget<>().overlay(com.cleanroommc.modularui.api.drawable.IKey.dynamic(() -> "Use held block"))
-                .size(PANEL_WIDTH - 16, ROW_HEIGHT)
-                .left(8)
+            new ButtonWidget<>().overlay(IKey.str("Use held block"))
+                .size(COLUMN_WIDTH, 16)
+                .left(LEFT_X)
                 .top(y)
                 .onMousePressed(button -> {
                     takeHeldBlock(settings);
                     return true;
                 }));
+    }
 
-        return panel;
+    private void buildCameraColumn(ModularPanel panel, CameraSettings settings) {
+        int y = 28;
+
+        panel.child(label("Camera (blocks/sec)", RIGHT_X, y));
+        y += ROW_HEIGHT + 2;
+
+        y = speedField(panel, "Fly", y, settings::getFlySpeed, settings::setFlySpeed);
+
+        panel.child(label("Keyframe approach speeds", RIGHT_X, y));
+        y += 14;
+
+        for (final PathSpeed tier : PathSpeed.values()) {
+            y = speedField(
+                panel,
+                tier.label(),
+                y,
+                () -> settings.getPathSpeed(tier),
+                value -> settings.setPathSpeed(tier, value));
+        }
+
+        panel.child(
+            new TextWidget<>(IKey.str("A segment takes as long as its\nlength needs at its speed.")).scale(0.8f)
+                .textAlign(Alignment.CenterLeft)
+                .left(RIGHT_X)
+                .width(COLUMN_WIDTH)
+                .top(y + 4)
+                .height(24));
+    }
+
+    /**
+     * A labelled numeric entry. Decimals are allowed because a slow drift is often well under
+     * one block per second, where whole numbers are too coarse to be useful.
+     */
+    private int speedField(ModularPanel panel, String name, int y, java.util.function.DoubleSupplier getter,
+        java.util.function.DoubleConsumer setter) {
+        panel.child(
+            new TextWidget<>(IKey.str(name)).textAlign(Alignment.CenterLeft)
+                .left(RIGHT_X)
+                .width(50)
+                .top(y)
+                .height(16));
+
+        panel.child(
+            new TextFieldWidget().value(new DoubleValue.Dynamic(getter, setter))
+                .numbersDouble(0.1D, 1000.0D)
+                .size(COLUMN_WIDTH - 54, 16)
+                .left(RIGHT_X + 54)
+                .top(y));
+
+        return y + 20;
+    }
+
+    private static TextWidget<?> label(String text, int x, int y) {
+        return new TextWidget<>(IKey.str(text)).textAlign(Alignment.CenterLeft)
+            .left(x)
+            .width(COLUMN_WIDTH)
+            .top(y)
+            .height(14);
+    }
+
+    private static TextWidget<?> dynamicLabel(java.util.function.Supplier<String> text, int x, int y) {
+        return new TextWidget<>(IKey.dynamic(text::get)).textAlign(Alignment.CenterLeft)
+            .left(x)
+            .width(COLUMN_WIDTH)
+            .top(y)
+            .height(12);
     }
 
     /**
