@@ -1,8 +1,23 @@
 // Add any additional repositories for your dependencies here
 
 repositories {
-    maven {
-        name "EngineHub Repository"
-        url "https://maven.enginehub.org/repo/"
+    // WorldEdit's two shaded dependencies -- jchronic and jlibnoise -- are not on Maven Central
+    // and are served by only a couple of hosts. One of the repositories this build otherwise
+    // consults for them is frequently unreachable from CI, and a repository that *times out*
+    // fails resolution outright rather than falling through to the next one the way a 404 does.
+    //
+    // exclusiveContent pins these groups to EngineHub, which is upstream for them, so no other
+    // repository is consulted for them and a slow third-party mirror cannot break the build.
+    exclusiveContent {
+        forRepository {
+            maven {
+                name "EngineHub Repository"
+                url "https://maven.enginehub.org/repo/"
+            }
+        }
+        filter {
+            includeGroup "com.sk89q"
+            includeGroup "com.sk89q.lib"
+        }
     }
 }

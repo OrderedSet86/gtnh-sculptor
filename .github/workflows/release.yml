@@ -1,16 +1,28 @@
 name: Release
 
+# Manual only. Run this from the Actions tab, type the version, and it does the rest --
+# tags the commit, builds, and publishes.
+#
+# Deliberately not triggered by pushing a tag. This workflow creates the tag itself, so a
+# tag-push trigger would fire a second run for the tag this run just made, and the two would
+# race to publish the same release.
 on:
-  push:
-    # Version tags only: 0.1.0, 1.2.3, 0.2.0-rc1. Avoids firing on incidental tags.
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
-      - '[0-9]+.[0-9]+.[0-9]+-*'
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Existing tag to build and release'
+      version:
+        description: 'Version to release, e.g. 0.1.0'
         required: true
+        type: string
+      prerelease:
+        description: 'Mark as a pre-release'
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: 'Create as a draft (review before publishing)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -22,11 +34,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-          # The mod version comes from the git tag via the build's versioning. Without full
-          # history and tags the jar is named after a commit hash instead of the release, so a
-          # shallow clone silently produces a wrongly-named artifact.
+          # The mod version is derived from git tags, so the full history and tags are needed
+          # for the build to name the jar after the release rather than a commit hash.
           fetch-depth: 0
+
+      - name: Validate version
+        run: |
+          set -euo pipefail
+          version='${{ inputs.version }}'
+          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$version' is not a version like 0.1.0 or 0.2.0-rc1"
+            exit 1
+          fi
+          # Catching this here gives a clear message, rather than a confusing push rejection
+          # several minutes into the build.
+          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            echo "::error::tag $version already exists. Delete it first, or pick another version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_ENV"
+
+      - name: Tag the release commit
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Tag before building: the jar takes its version from the tag, so building first
+          # would produce an artifact named after a commit instead.
+          git tag -a "$version" -m "Sculptor $version"
+          git push origin "$version"
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -45,8 +81,9 @@ jobs:
         id: jar
         run: |
           set -euo pipefail
-          # The distributable is the reobfuscated jar: not -dev (deobfuscated, for development
+          # The distributable is the reobfuscated jar: not -dev (deobfuscated, for developing
           # against this mod), not -preshadow (before dependency shading), not -sources.
+          #
           # `|| true` matters: under `set -e` an empty match would abort here, so the
           # diagnostic below would never run and the failure would be a bare "ls: cannot
           # access" with no listing of what was actually built.
@@ -56,8 +93,8 @@ jobs:
                 | grep -v -- '-sources' \
                 | head -1 || true)
           if [ -z "$jar" ]; then
-            echo "No release jar found in build/libs:" >&2
-            ls -la build/libs >&2
+            echo "::error::no release jar found in build/libs"
+            ls -la build/libs >&2 || true
             exit 1
           fi
           echo "path=$jar" >> "$GITHUB_OUTPUT"
@@ -67,20 +104,23 @@ jobs:
       - name: Verify jar identity
         run: |
           set -euo pipefail
-          # A jar that declares the wrong mod id would collide with WorldEdit for everyone who
-          # installs it, and the id lives in a generated file, so check rather than assume.
+          # A jar that declares the wrong mod id collides with WorldEdit for everyone who
+          # installs it, and the id lives in a generated file rather than one you can read off
+          # the source -- so check it rather than assume.
           unzip -p "${{ steps.jar.outputs.path }}" mcmod.info > /tmp/mcmod.info
           cat /tmp/mcmod.info
           grep -q '"modid": *"sculptor"' /tmp/mcmod.info \
             || { echo "::error::jar does not declare modid=sculptor"; exit 1; }
-          grep -q "\"version\": *\"${GITHUB_REF_NAME#refs/tags/}\"" /tmp/mcmod.info \
-            || echo "::warning::jar version does not match tag name"
+          grep -q "\"version\": *\"$version\"" /tmp/mcmod.info \
+            || { echo "::error::jar version does not match the requested version $version"; exit 1; }
 
-      - name: Create release
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: Sculptor ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ env.version }}
+          name: Sculptor ${{ env.version }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
           generate_release_notes: true
           files: |
             ${{ steps.jar.outputs.path }}
@@ -105,3 +145,10 @@ jobs:
 
             See the [README](https://github.com/OrderedSet86/gtnh-sculptor#readme) for
             controls and known gaps.
+
+      - name: Clean up tag on failure
+        if: failure()
+        run: |
+          # The tag is pushed before the build, so a failed build would otherwise leave a tag
+          # behind that blocks retrying the same version.
+          git push --delete origin "$version" || true

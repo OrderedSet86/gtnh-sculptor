@@ -79,6 +79,15 @@ To test multiplayer locally:
 ./gradlew runClient -PconnectTo=localhost
 ```
 
+## Releasing
+
+Run the **Release** workflow from the Actions tab and type the version (e.g. `0.1.0`). It tags
+the commit, builds, checks the jar declares the right mod id and version, and publishes the
+release with the jar attached. There is nothing to tag by hand — the workflow creates the tag,
+which is why it is not also triggered by pushing one.
+
+If the build fails, the tag it created is removed again so the same version can be retried.
+
 ## Status
 
 Working: preview capture, ghost renderer, brush loop, editor panel, camera paths, terrain
