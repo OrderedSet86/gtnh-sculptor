@@ -1,0 +1,51 @@
+name: Build and test
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The mod version is derived from git tags, so a shallow clone produces a
+          # differently-named jar than a real build would.
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Must match toolchainVersion in gradle/gradle-daemon-jvm.properties.
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and test
+        run: ./gradlew build --no-daemon
+
+      - name: Upload test results
+        # Worth having on failure especially, since that is when they are wanted.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/test-results/test/*.xml
+          if-no-files-found: warn
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: sculptor-jar
+          path: |
+            build/libs/sculptor-*.jar
+            !build/libs/*-dev.jar
+            !build/libs/*-preshadow.jar
+          if-no-files-found: error

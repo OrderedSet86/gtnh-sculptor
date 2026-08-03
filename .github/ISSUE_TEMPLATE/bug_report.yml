@@ -1,0 +1,62 @@
+name: Bug report
+description: Something behaves incorrectly or crashes.
+labels: [ bug ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please check the **Known gaps** section of the README — a few rough
+        edges are already documented, and knowing which ones you have hit is more useful
+        than a duplicate report.
+
+  - type: input
+    id: version
+    attributes:
+      label: Sculptor version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where did it happen?
+      options:
+        - Singleplayer
+        - Multiplayer (client side)
+        - Multiplayer (dedicated server)
+        - Both
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: input
+    id: brush
+    attributes:
+      label: Which brush and settings
+      description: Brush, radius, strength, and any second parameter, if the problem involves editing.
+      placeholder: "Erode, radius 18, strength 80%"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Attach `logs/fml-client-latest.log`, and `logs/fml-server-latest.log` for a server
+        issue. If it crashed, attach the crash report from `crash-reports/` — that usually
+        identifies the cause outright.
+      render: shell
+
+  - type: input
+    id: mods
+    attributes:
+      label: Other mods present
+      description: Especially rendering mods. Angelica version if you have it.
+      placeholder: "GTNH 2.8.0, Angelica 2.1.54"

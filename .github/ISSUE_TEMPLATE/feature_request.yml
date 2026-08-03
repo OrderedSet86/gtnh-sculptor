@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest a brush, tool, or improvement.
+labels: [ enhancement ]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: What are you trying to build?
+      description: |
+        The concrete task matters more than the proposed feature — knowing what you are
+        actually trying to make often suggests a better tool than the one being asked for.
+    validations:
+      required: true

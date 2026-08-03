@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    # Version tags only: 0.1.0, 1.2.3, 0.2.0-rc1. Avoids firing on incidental tags.
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and release'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          # The mod version comes from the git tag via the build's versioning. Without full
+          # history and tags the jar is named after a commit hash instead of the release, so a
+          # shallow clone silently produces a wrongly-named artifact.
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Must match toolchainVersion in gradle/gradle-daemon-jvm.properties.
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        run: ./gradlew build --no-daemon
+
+      - name: Identify release jar
+        id: jar
+        run: |
+          set -euo pipefail
+          # The distributable is the reobfuscated jar: not -dev (deobfuscated, for development
+          # against this mod), not -preshadow (before dependency shading), not -sources.
+          # `|| true` matters: under `set -e` an empty match would abort here, so the
+          # diagnostic below would never run and the failure would be a bare "ls: cannot
+          # access" with no listing of what was actually built.
+          jar=$(ls build/libs/sculptor-*.jar 2>/dev/null \
+                | grep -v -- '-dev' \
+                | grep -v -- '-preshadow' \
+                | grep -v -- '-sources' \
+                | head -1 || true)
+          if [ -z "$jar" ]; then
+            echo "No release jar found in build/libs:" >&2
+            ls -la build/libs >&2
+            exit 1
+          fi
+          echo "path=$jar" >> "$GITHUB_OUTPUT"
+          echo "Release jar: $jar"
+          sha256sum "$jar"
+
+      - name: Verify jar identity
+        run: |
+          set -euo pipefail
+          # A jar that declares the wrong mod id would collide with WorldEdit for everyone who
+          # installs it, and the id lives in a generated file, so check rather than assume.
+          unzip -p "${{ steps.jar.outputs.path }}" mcmod.info > /tmp/mcmod.info
+          cat /tmp/mcmod.info
+          grep -q '"modid": *"sculptor"' /tmp/mcmod.info \
+            || { echo "::error::jar does not declare modid=sculptor"; exit 1; }
+          grep -q "\"version\": *\"${GITHUB_REF_NAME#refs/tags/}\"" /tmp/mcmod.info \
+            || echo "::warning::jar version does not match tag name"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: Sculptor ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.jar.outputs.path }}
+            build/libs/sculptor-*-sources.jar
+          body: |
+            An interactive creative world editor for Minecraft 1.7.10.
+
+            ## Installing
+
+            > **Sculptor replaces WorldEdit. Do not install both.**
+            > It contains WorldEdit and registers the same commands, so running them
+            > together will collide. Remove `worldedit-*.jar` from `mods/` first.
+
+            Drop the jar in `mods/`. It is a universal Forge mod — the same file goes on the
+            client and on the server, and both need it for the editor to work in multiplayer.
+
+            Requires **GTNHLib**, **ModularUI2** and **UniMixins**. **Angelica** is optional
+            but is what the ghost renderer is designed against.
+
+            On a server, applying a brush requires permission: op by default, or the
+            `sculptor.brush` node if a permissions mod is installed.
+
+            See the [README](https://github.com/OrderedSet86/gtnh-sculptor#readme) for
+            controls and known gaps.
