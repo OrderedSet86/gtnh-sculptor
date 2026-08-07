@@ -475,6 +475,7 @@ public final class Brushes {
 
         Random placement = new Random(seedFor(cx, cy, cz));
         SculptorGenWorld genWorld = new SculptorGenWorld(ctx);
+        int skipped = 0;
 
         for (int i = 0; i < attempts; i++) {
             int x = (r == 0) ? cx : cx + placement.nextInt(2 * r + 1) - r;
@@ -494,7 +495,29 @@ public final class Brushes {
             WorldGenAbstractTree generator = biome.func_150567_a(treeRandom);
             if (generator == null) continue;
 
-            generator.generate(genWorld, treeRandom, x, surface + 1, z);
+            // Biomes hand out *shared* generator instances, and those instances are stateful:
+            // WorldGenBigTree stores the world in a field for the duration of a call, and Forge
+            // nulls it again on exit to avoid leaking the world. In singleplayer the client and
+            // the integrated server run on different threads in one JVM, so a preview on the
+            // client and a commit on the server can be inside the same generator object at once
+            // -- one finishes, nulls the field, and the other dereferences null mid-tree.
+            //
+            // Locking the generator serialises our two callers. It cannot cover vanilla chunk
+            // population, which touches the same instances without locking, so a failed tree is
+            // skipped rather than allowed to abort the whole brush.
+            synchronized (generator) {
+                try {
+                    generator.generate(genWorld, treeRandom, x, surface + 1, z);
+                } catch (RuntimeException e) {
+                    skipped++;
+                }
+            }
+        }
+
+        if (skipped > 0) {
+            // Worth surfacing rather than swallowing: a skipped tree means the ghost and the
+            // committed result disagree about that tree.
+            System.out.println("[Sculptor] skipped " + skipped + " tree(s) whose generator was busy");
         }
     }
 
