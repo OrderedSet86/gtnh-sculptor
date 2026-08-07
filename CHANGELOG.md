@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.2.0
+
+**Breaking: Sculptor is now an addon to WorldEdit and requires it.**
+
+Through 0.1.0 Sculptor vendored the whole of WorldEdit under its original package
+names, which made it a replacement rather than a companion — two jars exporting
+`com.sk89q.worldedit` into Forge's flat classloader collide, and no config flag fixes
+that. It also broke workflows even as the only mod, because moving the config directory
+moved the schematics directory with it.
+
+It now depends on `worldedit-gtnh` and ships only its own code. **Keep WorldEdit
+installed** — do not remove it as 0.1.0's instructions said. WorldEdit keeps all its own
+commands and workflows; Sculptor sits beside them.
+
+### Editing
+
+- **Separate undo.** Brush commits no longer land on WorldEdit's undo stack. `//undo`
+  will not revert a brush stroke, and `//sc-undo` / `//sc-redo` will not revert a `//`
+  command.
+- **Three-way placement mask** — overwrite anything, air only, or replace the selected
+  material only.
+- **Auto-smooth** after placement and terrain brushes, reaching past the brush so the new
+  shape blends into surrounding ground.
+- **Use-selected-material toggle** for the brushes that otherwise preserve existing terrain.
+- **Tree brush** — plants the biome's own species, previewable and undoable. Vanilla tree
+  generation normally bypasses `EditSession` entirely, so WorldEdit's own trees escape
+  `//undo`; Sculptor's do not.
+- **Foliage removal** now strips tree trunks along with leaves and plants.
+
+### Fixes
+
+- **Free camera targeted the wrong block.** The view rendered 1.62 blocks above where the
+  targeting ray began, so edits landed below the crosshair.
+- **Night vision was lost in free camera** — fog, sky and shader lighting all read the
+  camera entity, which carried no potion effects.
+- **Keybinds reset on restart.** The colon in descriptions like "Sculptor: commit brush"
+  broke `GameSettings` parsing, so rebinds were discarded and then overwritten. Bindings
+  are lang keys now; existing custom binds will not migrate.
+- **Terrain brushes destroyed the surface layer.** Raising stacked grass; lowering exposed
+  bare dirt. All column reshaping now carries the surface block to the new top with filler
+  beneath, for vanilla and modded terrain alike.
+- **Preview z-fighting** against real blocks.
+- **Smoothing was close to a no-op** — heights were rounded between passes, and the
+  correction was damped exactly where blending was needed.
+- **Preview lied for height-map brushes in 0.1.0.** `EditSession.getBlockType` bypassed the
+  capture, so smooth, flatten, raise and erode sampled unmodified terrain. The new
+  `SculptorEditContext` owns both sides of the read, so this cannot recur.
+
+
 ## 0.1.0
 
 First release.
