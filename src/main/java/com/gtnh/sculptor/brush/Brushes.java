@@ -15,13 +15,19 @@
 
 package com.gtnh.sculptor.brush;
 
+import java.util.Random;
+
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockBush;
 import net.minecraft.block.BlockLeavesBase;
+import net.minecraft.block.BlockLog;
 import net.minecraft.block.BlockVine;
 import net.minecraft.block.material.Material;
+import net.minecraft.world.biome.BiomeGenBase;
+import net.minecraft.world.gen.feature.WorldGenAbstractTree;
 
 import com.gtnh.sculptor.edit.SculptorEditContext;
+import com.gtnh.sculptor.world.SculptorGenWorld;
 import com.sk89q.worldedit.MaxChangedBlocksException;
 import com.sk89q.worldedit.Vector;
 import com.sk89q.worldedit.blocks.BaseBlock;
@@ -437,6 +443,68 @@ public final class Brushes {
         }
     }
 
+    // ---------------------------------------------------------------- trees
+
+    /**
+     * Plant trees of whatever species the biome grows.
+     *
+     * <p>
+     * Uses the biome's own generator ({@code BiomeGenBase.func_150567_a}), which subclasses
+     * override, so modded biomes supply their own trees with no per-biome table here. Generation
+     * is routed through {@link SculptorGenWorld} so it goes into the edit context rather than
+     * straight into the live world -- which is what lets a tree be previewed and undone at all.
+     * </p>
+     *
+     * <p>
+     * The random seed is derived from the target position, not from a fresh {@code Random}.
+     * Preview and commit are two separate executions, so an unseeded generator would grow a
+     * different tree each time and the ghost would be a lie. Seeding by position also means the
+     * same spot always grows the same tree, so re-previewing does not make it flicker between
+     * shapes as the crosshair jitters.
+     * </p>
+     */
+    public static void plantTrees(SculptorEditContext ctx, Vector centre, BrushParams params)
+        throws MaxChangedBlocksException {
+        int cx = centre.getBlockX();
+        int cy = centre.getBlockY();
+        int cz = centre.getBlockZ();
+        int r = Math.max(0, params.radius - 1);
+
+        // One tree at the smallest radius, more as it grows, thinned by strength.
+        int attempts = Math.max(1, (int) Math.round((r * r) / 6.0D * params.strength));
+
+        Random placement = new Random(seedFor(cx, cy, cz));
+        SculptorGenWorld genWorld = new SculptorGenWorld(ctx);
+
+        for (int i = 0; i < attempts; i++) {
+            int x = (r == 0) ? cx : cx + placement.nextInt(2 * r + 1) - r;
+            int z = (r == 0) ? cz : cz + placement.nextInt(2 * r + 1) - r;
+
+            if ((x - cx) * (x - cx) + (z - cz) * (z - cz) > r * r) continue;
+
+            int surface = terrainSurfaceY(ctx, x, z, cy + r + 4, cy - r - 4);
+            if (surface == Integer.MIN_VALUE || surface >= 254) continue;
+
+            BiomeGenBase biome = genWorld.getBiomeGenForCoords(x, z);
+            if (biome == null) continue;
+
+            // Each tree gets its own position-derived seed, so which trees appear does not
+            // depend on how many were attempted before it.
+            Random treeRandom = new Random(seedFor(x, surface, z));
+            WorldGenAbstractTree generator = biome.func_150567_a(treeRandom);
+            if (generator == null) continue;
+
+            generator.generate(genWorld, treeRandom, x, surface + 1, z);
+        }
+    }
+
+    /** Stable scatter of a position into a seed. */
+    private static long seedFor(int x, int y, int z) {
+        long seed = x * 341873128712L + z * 132897987541L + y * 6364136223846793005L;
+        seed ^= (seed >>> 33);
+        return seed;
+    }
+
     // ---------------------------------------------------------------- foliage
 
     /**
@@ -464,7 +532,7 @@ public final class Brushes {
                     if (y < 0 || y > 255) continue;
 
                     Vector pos = new Vector(cx + dx, y, cz + dz);
-                    if (isFoliage(ctx.getBlock(pos))) {
+                    if (isVegetation(ctx.getBlock(pos))) {
                         ctx.setBlock(pos, AIR);
                     }
                 }
@@ -482,6 +550,27 @@ public final class Brushes {
      * are what mods actually extend.
      * </p>
      */
+    /**
+     * Foliage plus tree trunks -- what the removal brush strips.
+     *
+     * <p>
+     * Kept separate from {@link #isFoliage}, which decides what counts as ground. A log is not
+     * ground, but it is also not something a raise brush should tunnel through, so only removal
+     * treats it as vegetation.
+     * </p>
+     *
+     * <p>
+     * Matched by {@code BlockLog} rather than by wood material, which would also catch planks
+     * and take out anything built from them.
+     * </p>
+     */
+    public static boolean isVegetation(BaseBlock block) {
+        if (isFoliage(block)) return true;
+
+        Block mcBlock = Block.getBlockById(block.getType());
+        return mcBlock instanceof BlockLog;
+    }
+
     public static boolean isFoliage(BaseBlock block) {
         int id = block.getType();
         if (id == BlockID.AIR) return false;

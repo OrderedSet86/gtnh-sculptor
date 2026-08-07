@@ -9,6 +9,7 @@ command and hope. Sculptor adds the layer that modern creative-building tools ha
 - **Brushes with live preview** — see the result as a translucent ghost before you commit.
 - **Terrain brushes with falloff** — raise, lower, flatten, erode, melt, tapering from the
   centre of the stroke so it blends into surrounding ground instead of stamping a shape.
+- **Trees and clearing** — plant the biome's own tree species, or strip foliage and trunks.
 - **An in-game editor panel** — brush picker, radius/strength sliders, material picker.
 - **A cinematic camera** — free camera decoupled from the player, with keyframed paths.
 
@@ -110,7 +111,7 @@ Known gaps:
   longer modifies `EditSession`.
 - Erode and melt are `O(radius³)`; large radii may be slow.
 - Preview at long range can be stale where chunks are not loaded client-side.
-- Trees and blueprints are not implemented.
+- Blueprints are not implemented.
 
 ## License
 

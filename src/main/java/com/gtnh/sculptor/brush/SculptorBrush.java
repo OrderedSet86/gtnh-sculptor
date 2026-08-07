@@ -40,6 +40,7 @@ public enum SculptorBrush {
     FLATTEN("Flatten", null, 0, 0, true, true),
     ERODE("Erode", null, 0, 0, true, false),
     MELT("Melt", null, 0, 0, true, false),
+    TREE("Plant trees", null, 0, 0, true, false),
     REMOVE_FOLIAGE("Remove foliage", null, 0, 0, false, false);
 
     private final String label;
@@ -139,6 +140,9 @@ public enum SculptorBrush {
                 break;
             case MELT:
                 Brushes.erode(ctx, centre, params, true);
+                break;
+            case TREE:
+                Brushes.plantTrees(ctx, centre, params);
                 break;
             case REMOVE_FOLIAGE:
                 Brushes.removeFoliage(ctx, centre, params);

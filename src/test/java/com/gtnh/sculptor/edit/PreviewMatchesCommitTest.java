@@ -177,12 +177,21 @@ public class PreviewMatchesCommitTest {
     }
 
     /**
-     * Every brush, not a sample. The read-back brushes are the ones at risk, but a shape brush
-     * regressing would be just as wrong and is free to check.
+     * Every brush that can run headlessly, not a sample. The read-back brushes are the ones at
+     * risk, but a shape brush regressing would be just as wrong and is free to check.
+     *
+     * <p>
+     * {@link SculptorBrush#TREE} is excluded because vanilla tree generation needs Minecraft's
+     * biome and block registries, which are not bootstrapped in a unit test, so it produces
+     * nothing here. That leaves its preview-vs-commit equivalence resting on the position-derived
+     * seeding rather than on this test -- worth knowing, since an unseeded generator would grow
+     * a different tree on commit than the ghost showed.
+     * </p>
      */
     @Test
     public void everyBrushPreviewsExactlyWhatItCommits() throws Exception {
         for (SculptorBrush brush : SculptorBrush.values()) {
+            if (brush == SculptorBrush.TREE) continue;
             assertPreviewMatchesCommit(brush);
         }
     }
