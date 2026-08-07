@@ -74,6 +74,9 @@ Committing goes through the server even in singleplayer, because the integrated 
 blocks. The client sends which brush it used and how it was configured; the server replays it
 against a real `EditSession` and records it in Sculptor's own history.
 
+Contributors: see [HANDOFF.md](HANDOFF.md) for architecture notes and the non-obvious
+constraints in this codebase.
+
 ## Building
 
 ```sh
