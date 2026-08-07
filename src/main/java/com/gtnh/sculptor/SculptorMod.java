@@ -15,11 +15,13 @@
 
 package com.gtnh.sculptor;
 
+import com.gtnh.sculptor.command.SculptorCommand;
 import com.gtnh.sculptor.proxy.CommonProxy;
 
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.SidedProxy;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
+import cpw.mods.fml.common.event.FMLServerStartingEvent;
 
 /**
  * Sculptor: an interactive creative world editor.
@@ -57,6 +59,13 @@ public class SculptorMod {
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
         proxy.registerHandlers();
+    }
+
+    @Mod.EventHandler
+    public void serverStarting(FMLServerStartingEvent event) {
+        // Sculptor's undo is separate from WorldEdit's, so it needs its own commands.
+        event.registerServerCommand(SculptorCommand.undoCommand());
+        event.registerServerCommand(SculptorCommand.redoCommand());
     }
 
 }

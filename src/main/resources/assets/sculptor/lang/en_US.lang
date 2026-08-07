@@ -3,8 +3,6 @@ key.categories.sculptor=Sculptor
 key.sculptor.brush.toggle=Toggle sculpt mode
 key.sculptor.brush.commit=Commit brush (hold to repeat)
 key.sculptor.brush.panel=Open editor panel
-key.sculptor.brush.undo=Undo (Sculptor)
-key.sculptor.brush.redo=Redo (Sculptor)
 
 key.sculptor.camera.toggle=Toggle free camera
 key.sculptor.camera.keyframe.slow=Add keyframe (slow approach)

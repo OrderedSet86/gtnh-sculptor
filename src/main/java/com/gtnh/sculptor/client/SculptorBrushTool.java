@@ -74,8 +74,6 @@ public class SculptorBrushTool {
     private static final KeyBinding TOGGLE_KEY = new KeyBinding("key.sculptor.brush.toggle", Keyboard.KEY_B, CATEGORY);
     private static final KeyBinding COMMIT_KEY = new KeyBinding("key.sculptor.brush.commit", Keyboard.KEY_V, CATEGORY);
     private static final KeyBinding PANEL_KEY = new KeyBinding("key.sculptor.brush.panel", Keyboard.KEY_N, CATEGORY);
-    private static final KeyBinding UNDO_KEY = new KeyBinding("key.sculptor.brush.undo", Keyboard.KEY_Z, CATEGORY);
-    private static final KeyBinding REDO_KEY = new KeyBinding("key.sculptor.brush.redo", Keyboard.KEY_Y, CATEGORY);
 
     /**
      * How far the brush can reach, in blocks.
@@ -120,8 +118,6 @@ public class SculptorBrushTool {
         ClientRegistry.registerKeyBinding(TOGGLE_KEY);
         ClientRegistry.registerKeyBinding(COMMIT_KEY);
         ClientRegistry.registerKeyBinding(PANEL_KEY);
-        ClientRegistry.registerKeyBinding(UNDO_KEY);
-        ClientRegistry.registerKeyBinding(REDO_KEY);
     }
 
     public boolean isActive() {
@@ -145,10 +141,8 @@ public class SculptorBrushTool {
             ClientGUI.open(new SculptorPanel());
         }
 
-        // Undo and redo are Sculptor's own, not WorldEdit's. //undo will not revert a brush
-        // stroke and this will not revert a // command.
-        if (UNDO_KEY.isPressed()) SculptorNetwork.sendUndo();
-        if (REDO_KEY.isPressed()) SculptorNetwork.sendRedo();
+        // Undo is //sc-undo, not a key. It is destructive and infrequent, and a key that
+        // far-reaching is too easy to hit by accident mid-stroke.
 
         // Commit is driven from the tick instead of here, so that holding the key repeats.
     }

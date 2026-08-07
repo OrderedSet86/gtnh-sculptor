@@ -69,8 +69,6 @@ public class SculptorNetwork {
     public static final String CHANNEL_NAME = "Sculptor";
 
     private static final byte OP_COMMIT = 1;
-    private static final byte OP_UNDO = 2;
-    private static final byte OP_REDO = 3;
 
     /** brush + xyz + radius + material + secondary + strength + autoSmooth + flags + mask. */
     private static final int COMMIT_PAYLOAD_BYTES = 1 + 12 + 4 + 3 + 2 + 1 + 1 + 1 + 1;
@@ -132,20 +130,6 @@ public class SculptorNetwork {
         channel.sendToServer(new FMLProxyPacket(buf, CHANNEL_NAME));
     }
 
-    public static void sendUndo() {
-        sendBare(OP_UNDO);
-    }
-
-    public static void sendRedo() {
-        sendBare(OP_REDO);
-    }
-
-    private static void sendBare(byte op) {
-        ByteBuf buf = Unpooled.buffer();
-        buf.writeByte(op);
-        channel.sendToServer(new FMLProxyPacket(buf, CHANNEL_NAME));
-    }
-
     // ------------------------------------------------------------------ server side
 
     @SubscribeEvent
@@ -159,30 +143,8 @@ public class SculptorNetwork {
         if (player == null) return;
 
         byte op = buf.readByte();
-        switch (op) {
-            case OP_COMMIT:
-                readCommit(buf, player);
-                break;
-            case OP_UNDO:
-                pending.add(new Runnable() {
-
-                    @Override
-                    public void run() {
-                        applyHistory(player, true);
-                    }
-                });
-                break;
-            case OP_REDO:
-                pending.add(new Runnable() {
-
-                    @Override
-                    public void run() {
-                        applyHistory(player, false);
-                    }
-                });
-                break;
-            default:
-                break;
+        if (op == OP_COMMIT) {
+            readCommit(buf, player);
         }
     }
 
@@ -271,28 +233,6 @@ public class SculptorNetwork {
             tell(playerMP, "Sculptor: " + brush.label() + " applied " + edit.getBlockChangeCount() + " blocks");
         } catch (Exception e) {
             tell(playerMP, "Sculptor: commit failed: " + e);
-            e.printStackTrace();
-        }
-    }
-
-    private static void applyHistory(EntityPlayerMP playerMP, boolean undo) {
-        try {
-            ForgePlayer player = ForgeWorldEdit.inst.wrap(playerMP);
-            if (!player.hasPermission(PERMISSION_BRUSH)) {
-                tell(playerMP, "Sculptor: you do not have permission to edit");
-                return;
-            }
-
-            SculptorHistory history = SculptorHistory.forPlayer(playerMP.getUniqueID());
-            boolean done = undo ? history.undo(player) : history.redo(player);
-
-            if (done) {
-                tell(playerMP, undo ? "Sculptor: undone" : "Sculptor: redone");
-            } else {
-                tell(playerMP, undo ? "Sculptor: nothing to undo" : "Sculptor: nothing to redo");
-            }
-        } catch (Exception e) {
-            tell(playerMP, "Sculptor: " + (undo ? "undo" : "redo") + " failed: " + e);
             e.printStackTrace();
         }
     }

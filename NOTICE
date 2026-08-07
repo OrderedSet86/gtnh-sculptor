@@ -9,41 +9,40 @@ It is not a port of, and contains no code from, any all-rights-reserved mod. It
 is an independent implementation built on the components listed below.
 
 
-Vendored code
--------------
+Relationship to WorldEdit
+-------------------------
 
-This repository vendors WorldEdit, which provides the edit engine (EditSession,
-history, masks, patterns, clipboard, schematics).
+Sculptor is an addon to WorldEdit, not a replacement for it, and no longer
+contains a copy of it. WorldEdit supplies the edit engine -- EditSession,
+selections, masks, patterns -- and keeps all of its own commands and workflows.
+Sculptor adds an interactive layer beside them, registers no `//` commands other
+than its own `//sc-undo` and `//sc-redo`, and keeps its edit history separate
+from WorldEdit's.
 
   WorldEdit
     Copyright (C) sk89q <http://www.sk89q.com>
     Copyright (C) WorldEdit team and contributors
     Licensed under the GNU Lesser General Public License, version 3.
-    See LICENSE.
 
-  Source: https://github.com/GTNewHorizons/worldedit-gtnh
-    at commit e5623acbae3825f671ace73f3feaf76972580038,
-    itself a fork of https://github.com/EngineHub/WorldEdit
-    (branch forge-archive/1.7.10).
+  Consumed as: com.github.GTNewHorizons:worldedit-gtnh
+    https://github.com/GTNewHorizons/worldedit-gtnh
 
-The initial commit of this repository is an unmodified copy of that tree, so
-every Sculptor change is visible as a diff against it and upstream fixes can be
-cherry-picked.
+Earlier versions of Sculptor (through 0.1.0) vendored WorldEdit's source under
+its original package names, which made it a replacement rather than a companion.
+That copy has been removed; the git history retains it.
 
-Sculptor's own additions are likewise licensed under the LGPL, version 3, as
-required by the above.
+Sculptor's own code is licensed under the GNU Lesser General Public License,
+version 3. See LICENSE.
 
 
 Runtime dependencies
 --------------------
 
-Sculptor builds against the following, none of which are redistributed here:
+None of these are redistributed here:
 
-  Angelica, Celeritas    LGPL-3.0   GTNewHorizons
-  GTNHLib                LGPL-3.0   GTNewHorizons
-  ModularUI2             LGPL-3.0   GTNewHorizons / CleanroomMC
-  Freecam                LGPL-3.0   GTNewHorizons
-  lwjgl3ify              LGPL-3.0   GTNewHorizons
-  UniMixins              various    LegacyModdingMC
+  worldedit-gtnh         LGPL-3.0   GTNewHorizons / sk89q   (required)
+  GTNHLib                LGPL-3.0   GTNewHorizons           (required)
+  ModularUI2             LGPL-3.0   GTNewHorizons / CleanroomMC (required)
+  Angelica, Celeritas    LGPL-3.0   GTNewHorizons           (optional)
 
 Note: StructureLib is GPL-3.0, not LGPL, and is deliberately not linked.
