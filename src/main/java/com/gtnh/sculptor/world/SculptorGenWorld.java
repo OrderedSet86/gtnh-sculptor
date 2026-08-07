@@ -17,6 +17,7 @@ package com.gtnh.sculptor.world;
 
 import net.minecraft.block.Block;
 import net.minecraft.entity.Entity;
+import net.minecraft.init.Blocks;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldSettings;
@@ -30,6 +31,7 @@ import com.sk89q.worldedit.MaxChangedBlocksException;
 import com.sk89q.worldedit.Vector;
 import com.sk89q.worldedit.Vector2D;
 import com.sk89q.worldedit.blocks.BaseBlock;
+import com.sk89q.worldedit.blocks.BlockID;
 
 /**
  * A {@link World} whose block reads and writes go to a {@link SculptorEditContext}.
@@ -78,21 +80,74 @@ public class SculptorGenWorld extends World {
         this.ctx = ctx;
     }
 
+    // ------------------------------------------------------------------ soil override
+
+    /**
+     * A patch of ground reported to the generator as dirt.
+     *
+     * <p>
+     * Every 1.7.10 tree generator asks the block below its base
+     * {@code canSustainPlant(world, x, y - 1, z, UP, Blocks.sapling)}, and Forge's default answer
+     * is yes for grass, dirt and farmland and no for everything else. A generator refused this way
+     * returns {@code false} without throwing, so planting on sculpted stained clay or stone looked
+     * like the brush had simply done nothing.
+     * </p>
+     *
+     * <p>
+     * Answering that one read with dirt is enough, and it is the only approach that costs nothing:
+     * no block is written, so nothing reaches the preview buffer, the {@code EditSession}, its
+     * change set or the undo history, and the terrain the player sculpted is still there
+     * afterwards. Swapping the block for real and swapping it back would work too, but it would
+     * land in history twice, inflate the "applied N blocks" count, and be rejected outright by a
+     * placement mask of air-only or replace-selected -- silently reinstating the bug.
+     * </p>
+     *
+     * <p>
+     * Two blocks square, because {@code WorldGenHugeTrees} checks all four columns under its base.
+     * </p>
+     */
+    private boolean soilOverride;
+    private int soilX, soilY, soilZ;
+
+    public void setSoilOverride(int x, int y, int z) {
+        this.soilOverride = true;
+        this.soilX = x;
+        this.soilY = y;
+        this.soilZ = z;
+    }
+
+    public void clearSoilOverride() {
+        this.soilOverride = false;
+    }
+
+    private boolean isOverriddenSoil(int x, int y, int z) {
+        return soilOverride && y == soilY && (x == soilX || x == soilX + 1) && (z == soilZ || z == soilZ + 1);
+    }
+
     // ------------------------------------------------------------------ block access
 
     @Override
     public Block getBlock(int x, int y, int z) {
         if (y < 0 || y > 255) return Blocks_air();
-        return Block.getBlockById(
-            ctx.getBlock(new Vector(x, y, z))
-                .getType());
+
+        BaseBlock block = ctx.getBlock(new Vector(x, y, z));
+
+        // Never lie over air: a tree should still refuse to grow on nothing.
+        if (isOverriddenSoil(x, y, z) && block.getType() != BlockID.AIR) {
+            return Blocks.dirt;
+        }
+
+        return Block.getBlockById(block.getType());
     }
 
     @Override
     public int getBlockMetadata(int x, int y, int z) {
         if (y < 0 || y > 255) return 0;
-        return ctx.getBlock(new Vector(x, y, z))
-            .getData();
+
+        BaseBlock block = ctx.getBlock(new Vector(x, y, z));
+        if (isOverriddenSoil(x, y, z) && block.getType() != BlockID.AIR) return 0;
+
+        return block.getData();
     }
 
     @Override
@@ -103,6 +158,13 @@ public class SculptorGenWorld extends World {
     @Override
     public boolean setBlock(int x, int y, int z, Block block, int metadata, int flags) {
         if (y < 0 || y > 255) return false;
+
+        // The soil is being reported as dirt, and some generators write it back as such --
+        // WorldGenMegaPineTree stamps podzol over it outright. Dropping those writes is the whole
+        // point: the block the player sculpted with must survive having a tree put on it. Reported
+        // as succeeded, since from the generator's side it did.
+        if (isOverriddenSoil(x, y, z)) return true;
+
         try {
             ctx.setBlock(x, y, z, new BaseBlock(Block.getIdFromBlock(block), metadata));
             return true;
@@ -212,7 +274,7 @@ public class SculptorGenWorld extends World {
     }
 
     private static Block Blocks_air() {
-        return net.minecraft.init.Blocks.air;
+        return Blocks.air;
     }
 
 }

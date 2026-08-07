@@ -76,23 +76,84 @@ public final class Brushes {
     }
 
     /**
-     * The top block of the actual ground, ignoring anything growing on it.
+     * Whether a block counts as ground for surface finding: solid, and not something growing on
+     * it. Plain "not air" would treat a tuft of grass as the surface, so raising a grassy hillside
+     * would stack copies of the grass rather than the ground under it.
+     */
+    private static boolean isGround(SculptorEditContext ctx, int x, int y, int z) {
+        BaseBlock block = ctx.getBlock(new Vector(x, y, z));
+        return block.getType() != BlockID.AIR && !isFoliage(block);
+    }
+
+    /**
+     * The top block of the actual ground in a column, probed outward from a nearby height.
      *
      * <p>
-     * Plain "highest non-air" would treat a tuft of grass as the surface, so raising a grassy
-     * hillside would stack copies of the grass rather than the ground under it.
+     * This deliberately takes a starting guess rather than a search window. A window anchored to
+     * the brush centre -- which is what this used to be -- fails silently in both directions on
+     * any terrain with real relief. Above the window, the downward scan begins <em>inside</em> the
+     * hill and hands back a buried interior block as if it were the surface; the lowering half of
+     * {@link #reshapeColumn} then carves from there down and leaves everything above untouched,
+     * which is how smoothing a steep face produced an intact roof over a fresh cavity. Below it,
+     * the column reports no surface at all and its brush skips it, so near the rim of a large
+     * brush on a slope whichever columns happen to poke above the boundary get moved and their
+     * neighbours do not -- raise scattering single blocks instead of lifting a dome.
+     * </p>
+     *
+     * <p>
+     * Climbing is contiguous on purpose: a column started inside a mass walks to the top of
+     * <em>that</em> mass, so a bridge or platform floating in clear air overhead is not mistaken
+     * for the ground.
      * </p>
      */
-    private static int terrainSurfaceY(SculptorEditContext ctx, int x, int z, int topY, int bottomY) {
-        int from = Math.min(255, topY);
-        int to = Math.max(0, bottomY);
-        for (int y = from; y >= to; y--) {
-            BaseBlock block = ctx.getBlock(new Vector(x, y, z));
-            if (block.getType() == BlockID.AIR) continue;
-            if (isFoliage(block)) continue;
+    private static int terrainSurfaceY(SculptorEditContext ctx, int x, int z, int nearY) {
+        int y = Math.max(0, Math.min(255, nearY));
+
+        if (isGround(ctx, x, y, z)) {
+            while (y < 255 && isGround(ctx, x, y + 1, z)) y++;
             return y;
         }
+
+        while (y >= 0) {
+            if (isGround(ctx, x, y, z)) return y;
+            y--;
+        }
         return Integer.MIN_VALUE;
+    }
+
+    /**
+     * Ground height for every column of a brush footprint, indexed {@code (dz + r) * width + (dx +
+     * r)}, holding {@link Integer#MIN_VALUE} where a column has no ground at all.
+     *
+     * <p>
+     * Sampled with a running probe rather than a fixed start, which is what keeps an unbounded
+     * search cheap: terrain is continuous, so a column's neighbour is almost always within a block
+     * or two and the probe lands on or beside the answer. Each row restarts from the first column
+     * of the row above rather than the last, since the scan wraps back to the far side of the disc
+     * at every row boundary.
+     * </p>
+     */
+    private static int[] sampleHeights(SculptorEditContext ctx, int cx, int cy, int cz, int r) {
+        int width = 2 * r + 1;
+        int[] heights = new int[width * width];
+
+        int rowStart = cy;
+        for (int dz = -r; dz <= r; dz++) {
+            int probe = rowStart;
+            boolean rowSeeded = false;
+            for (int dx = -r; dx <= r; dx++) {
+                int surface = terrainSurfaceY(ctx, cx + dx, cz + dz, probe);
+                heights[(dz + r) * width + (dx + r)] = surface;
+                if (surface != Integer.MIN_VALUE) {
+                    probe = surface;
+                    if (!rowSeeded) {
+                        rowStart = surface;
+                        rowSeeded = true;
+                    }
+                }
+            }
+        }
+        return heights;
     }
 
     // ---------------------------------------------------------------- shapes
@@ -156,6 +217,12 @@ public final class Brushes {
         // proportionally bigger hill rather than a wide flat step.
         double maxLift = Math.max(1.0D, r * params.strength);
 
+        // Sampled up front, like smooth does. Each column's reshape reads and writes only its own
+        // column, so this is equivalent to interleaving and keeps all three height-map brushes
+        // agreeing on how the surface is found.
+        int width = 2 * r + 1;
+        int[] heights = sampleHeights(ctx, cx, cy, cz, r);
+
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
                 double weight = falloff(Math.sqrt(dx * dx + (double) dz * dz), r);
@@ -164,12 +231,10 @@ public final class Brushes {
                 int amount = (int) Math.round(maxLift * weight);
                 if (amount <= 0) continue;
 
-                int x = cx + dx;
-                int z = cz + dz;
-                int surface = terrainSurfaceY(ctx, x, z, cy + r + 1, cy - r - 1);
+                int surface = heights[(dz + r) * width + (dx + r)];
                 if (surface == Integer.MIN_VALUE) continue;
 
-                reshapeColumn(ctx, params, x, z, surface, surface + sign * amount);
+                reshapeColumn(ctx, params, cx + dx, cz + dz, surface, surface + sign * amount);
             }
         }
     }
@@ -213,6 +278,15 @@ public final class Brushes {
                 ctx.setBlock(x, y, z, filler);
             }
         } else {
+            // Foliage sits above the surface, so it is outside the cut and would be left hanging
+            // once the ground under it drops. Raising does not need this -- anything growing there
+            // is inside the range being filled.
+            for (int y = surface + 1; y <= 255; y++) {
+                BaseBlock above = ctx.getBlock(new Vector(x, y, z));
+                if (above.getType() == BlockID.AIR || !isFoliage(above)) break;
+                ctx.setAir(x, y, z);
+            }
+
             for (int y = surface; y > newTop; y--) {
                 ctx.setAir(x, y, z);
             }
@@ -231,20 +305,21 @@ public final class Brushes {
         int cz = centre.getBlockZ();
         int r = params.radius;
 
+        int width = 2 * r + 1;
+        int[] heights = sampleHeights(ctx, cx, targetY, cz, r);
+
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
                 double weight = falloff(Math.sqrt(dx * dx + (double) dz * dz), r);
                 if (weight <= 0.0D) continue;
 
-                int x = cx + dx;
-                int z = cz + dz;
-                int surface = terrainSurfaceY(ctx, x, z, targetY + r + 1, targetY - r - 1);
+                int surface = heights[(dz + r) * width + (dx + r)];
                 if (surface == Integer.MIN_VALUE) continue;
 
                 // Move only part of the way, scaled by falloff, so the brush edge blends
                 // instead of leaving a cliff.
                 int desired = (int) Math.round(surface + (targetY - surface) * weight * params.strength);
-                reshapeColumn(ctx, params, x, z, surface, desired);
+                reshapeColumn(ctx, params, cx + dx, cz + dz, surface, desired);
             }
         }
     }
@@ -266,15 +341,10 @@ public final class Brushes {
         int r = params.radius;
         int width = 2 * r + 1;
 
-        int[] original = new int[width * width];
+        int[] original = sampleHeights(ctx, cx, cy, cz, r);
         double[] heights = new double[width * width];
-        for (int dx = -r; dx <= r; dx++) {
-            for (int dz = -r; dz <= r; dz++) {
-                int index = (dz + r) * width + (dx + r);
-                int surface = terrainSurfaceY(ctx, cx + dx, cz + dz, cy + r + 1, cy - r - 1);
-                original[index] = surface;
-                heights[index] = (surface == Integer.MIN_VALUE) ? Double.NaN : surface;
-            }
+        for (int index = 0; index < original.length; index++) {
+            heights[index] = (original[index] == Integer.MIN_VALUE) ? Double.NaN : original[index];
         }
 
         // Heights stay fractional between passes. Rounding each iteration back to whole blocks
@@ -483,7 +553,7 @@ public final class Brushes {
 
             if ((x - cx) * (x - cx) + (z - cz) * (z - cz) > r * r) continue;
 
-            int surface = terrainSurfaceY(ctx, x, z, cy + r + 4, cy - r - 4);
+            int surface = terrainSurfaceY(ctx, x, z, cy);
             if (surface == Integer.MIN_VALUE || surface >= 254) continue;
 
             BiomeGenBase biome = genWorld.getBiomeGenForCoords(x, z);
@@ -506,10 +576,16 @@ public final class Brushes {
             // population, which touches the same instances without locking, so a failed tree is
             // skipped rather than allowed to abort the whole brush.
             synchronized (generator) {
+                // Vanilla only grows trees on grass, dirt or farmland. Reporting the ground as
+                // dirt for the duration of the call lets one land on sculpted terrain of any
+                // material, without writing anything -- see SculptorGenWorld.setSoilOverride.
+                genWorld.setSoilOverride(x, surface, z);
                 try {
                     generator.generate(genWorld, treeRandom, x, surface + 1, z);
                 } catch (RuntimeException e) {
                     skipped++;
+                } finally {
+                    genWorld.clearSoilOverride();
                 }
             }
         }
