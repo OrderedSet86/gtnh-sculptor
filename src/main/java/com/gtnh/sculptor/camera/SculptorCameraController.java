@@ -89,24 +89,9 @@ public class SculptorCameraController {
 
     private static final int TICKS_PER_SECOND = 20;
 
-    private static final class Keyframe {
+    private static SculptorCameraController instance;
 
-        final double x, y, z;
-        final float yaw, pitch;
-        /** How fast to travel <em>into</em> this keyframe from the one before it. */
-        final PathSpeed speed;
-
-        Keyframe(double x, double y, double z, float yaw, float pitch, PathSpeed speed) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            this.yaw = yaw;
-            this.pitch = pitch;
-            this.speed = speed;
-        }
-    }
-
-    private final List<Keyframe> path = new ArrayList<Keyframe>();
+    private final List<CameraKeyframe> path = new ArrayList<CameraKeyframe>();
 
     private SculptorCamera camera;
     private MovementInput savedInput;
@@ -125,10 +110,35 @@ public class SculptorCameraController {
         ClientRegistry.registerKeyBinding(ADD_FAST_KEY);
         ClientRegistry.registerKeyBinding(PLAY_KEY);
         ClientRegistry.registerKeyBinding(CLEAR_KEY);
+
+        instance = this;
+    }
+
+    /**
+     * The one controller, created by {@code ClientProxy}. The path lives on it, so the panel and
+     * the {@code /scpath} command both need a way in.
+     */
+    public static SculptorCameraController instance() {
+        return instance;
     }
 
     public boolean isActive() {
         return camera != null;
+    }
+
+    /** A copy: the path is only changed through {@link #setPath}, so timings cannot go stale. */
+    public List<CameraKeyframe> getPath() {
+        return new ArrayList<CameraKeyframe>(path);
+    }
+
+    /**
+     * Replace the whole path. Playback stops rather than continuing into keyframes it was not
+     * timed against -- {@code segmentTicks} is computed once when play starts.
+     */
+    public void setPath(List<CameraKeyframe> keyframes) {
+        playing = false;
+        path.clear();
+        if (keyframes != null) path.addAll(keyframes);
     }
 
     @SubscribeEvent
@@ -202,7 +212,8 @@ public class SculptorCameraController {
             say(mc, "Sculptor: enable the free camera first");
             return;
         }
-        path.add(new Keyframe(camera.posX, camera.posY, camera.posZ, camera.rotationYaw, camera.rotationPitch, speed));
+        path.add(
+            new CameraKeyframe(camera.posX, camera.posY, camera.posZ, camera.rotationYaw, camera.rotationPitch, speed));
         say(mc, "Sculptor: keyframe " + path.size() + " added (" + speed.label() + " approach)");
     }
 
@@ -243,8 +254,8 @@ public class SculptorCameraController {
         totalTicks = 0;
 
         for (int i = 0; i < segments; i++) {
-            Keyframe from = path.get(i);
-            Keyframe to = path.get(i + 1);
+            CameraKeyframe from = path.get(i);
+            CameraKeyframe to = path.get(i + 1);
 
             double dx = to.x - from.x;
             double dy = to.y - from.y;
@@ -407,10 +418,10 @@ public class SculptorCameraController {
 
         double t = ticksIntoSegment / (double) segmentTicks[segment];
 
-        Keyframe p0 = path.get(Math.max(0, segment - 1));
-        Keyframe p1 = path.get(segment);
-        Keyframe p2 = path.get(Math.min(path.size() - 1, segment + 1));
-        Keyframe p3 = path.get(Math.min(path.size() - 1, segment + 2));
+        CameraKeyframe p0 = path.get(Math.max(0, segment - 1));
+        CameraKeyframe p1 = path.get(segment);
+        CameraKeyframe p2 = path.get(Math.min(path.size() - 1, segment + 1));
+        CameraKeyframe p3 = path.get(Math.min(path.size() - 1, segment + 2));
 
         double x = catmullRom(p0.x, p1.x, p2.x, p3.x, t);
         double y = catmullRom(p0.y, p1.y, p2.y, p3.y, t);

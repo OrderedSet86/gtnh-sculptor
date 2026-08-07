@@ -62,6 +62,9 @@ public final class CameraSettings {
     /** Multiplier applied while the sprint key is held. */
     private double sprintMultiplier = 4.0D;
 
+    /** The path name the panel's save and load buttons act on. */
+    private String pathName = "path1";
+
     private CameraSettings() {
         PathSpeed[] tiers = PathSpeed.values();
         pathSpeeds = new double[tiers.length];
@@ -92,6 +95,14 @@ public final class CameraSettings {
 
     public double getSprintMultiplier() {
         return sprintMultiplier;
+    }
+
+    public String getPathName() {
+        return pathName;
+    }
+
+    public void setPathName(String name) {
+        this.pathName = (name == null) ? "" : name.trim();
     }
 
     /** Zero would stall a path forever; the upper bound just keeps a typo from teleporting you. */

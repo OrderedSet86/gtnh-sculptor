@@ -15,12 +15,15 @@
 
 package com.gtnh.sculptor;
 
+import java.io.File;
+
 import com.gtnh.sculptor.command.SculptorCommand;
 import com.gtnh.sculptor.proxy.CommonProxy;
 
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.SidedProxy;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
+import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
 
 /**
@@ -55,6 +58,26 @@ public class SculptorMod {
 
     @SidedProxy(serverSide = "com.gtnh.sculptor.proxy.CommonProxy", clientSide = "com.gtnh.sculptor.proxy.ClientProxy")
     public static CommonProxy proxy;
+
+    private static File configDirectory;
+
+    /**
+     * Forge hands over the configuration directory here and nowhere else.
+     *
+     * <p>
+     * Taken from the event rather than assumed to be {@code .minecraft/config}, because a pack can
+     * move it -- and 0.1.0 already shipped one bug caused by tying a directory to the wrong root.
+     * </p>
+     */
+    @Mod.EventHandler
+    public void preInit(FMLPreInitializationEvent event) {
+        configDirectory = event.getModConfigurationDirectory();
+    }
+
+    /** Where Sculptor keeps its own files. Null before pre-init. */
+    public static File configDirectory() {
+        return configDirectory;
+    }
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {

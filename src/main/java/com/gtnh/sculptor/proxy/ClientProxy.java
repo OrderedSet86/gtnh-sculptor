@@ -15,10 +15,12 @@
 
 package com.gtnh.sculptor.proxy;
 
+import net.minecraftforge.client.ClientCommandHandler;
 import net.minecraftforge.common.MinecraftForge;
 
 import com.gtnh.sculptor.camera.SculptorCameraController;
 import com.gtnh.sculptor.client.SculptorBrushTool;
+import com.gtnh.sculptor.command.SculptorPathCommand;
 import com.gtnh.sculptor.render.GhostRenderer;
 
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -44,6 +46,10 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(camera);
 
         MinecraftForge.EVENT_BUS.register(GhostRenderer.instance());
+
+        // Camera paths are client state, so the command that saves them has to be a client
+        // command -- the server never sees a path and would have nothing to save.
+        ClientCommandHandler.instance.registerCommand(new SculptorPathCommand());
     }
 
 }

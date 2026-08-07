@@ -15,6 +15,8 @@
 
 package com.gtnh.sculptor.client;
 
+import java.util.List;
+
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
@@ -25,14 +27,18 @@ import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.DoubleValue;
+import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.SliderWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.gtnh.sculptor.brush.BrushSettings;
 import com.gtnh.sculptor.brush.SculptorBrush;
+import com.gtnh.sculptor.camera.CameraKeyframe;
+import com.gtnh.sculptor.camera.CameraPathStore;
 import com.gtnh.sculptor.camera.CameraSettings;
 import com.gtnh.sculptor.camera.CameraSettings.PathSpeed;
+import com.gtnh.sculptor.camera.SculptorCameraController;
 
 /**
  * The editor panel: brush settings on the left, camera speeds on the right.
@@ -67,6 +73,13 @@ public class SculptorPanel extends CustomModularScreen {
      * there, and the label always shows the value in effect.
      */
     private static final int SECONDARY_SLIDER_MAX = 32;
+
+    /**
+     * Result of the last save or load, shown under the buttons. Static because the panel is a
+     * fresh screen every time it is opened, and a message that vanished when you closed it would
+     * be gone before you could read a file-system error.
+     */
+    private static String pathStatus = "";
 
     @Override
     public ModularPanel buildUI(ModularGuiContext context) {
@@ -261,6 +274,106 @@ public class SculptorPanel extends CustomModularScreen {
                 .width(COLUMN_WIDTH)
                 .top(y + 4)
                 .height(24));
+        y += 32;
+
+        buildPathStorageRows(panel, settings, y);
+    }
+
+    /**
+     * Save and load for the keyframed path.
+     *
+     * <p>
+     * The same two operations are on {@code /scpath}, which also lists and deletes. Both exist
+     * because they are used at different moments: the command when you know what the shot is
+     * called, these buttons when you are already in the panel adjusting the speeds the path will
+     * play at.
+     * </p>
+     */
+    private void buildPathStorageRows(ModularPanel panel, CameraSettings settings, int y) {
+        panel.child(label("Path file", RIGHT_X, y));
+        y += 14;
+
+        panel.child(
+            new TextFieldWidget().value(new StringValue.Dynamic(settings::getPathName, settings::setPathName))
+                .setMaxLength(64)
+                .size(COLUMN_WIDTH, 16)
+                .left(RIGHT_X)
+                .top(y));
+        y += 20;
+
+        int buttonWidth = (COLUMN_WIDTH - 4) / 2;
+
+        panel.child(
+            new ButtonWidget<>().overlay(IKey.str("Save"))
+                .size(buttonWidth, 16)
+                .left(RIGHT_X)
+                .top(y)
+                .onMousePressed(button -> {
+                    savePath(settings.getPathName());
+                    return true;
+                }));
+
+        panel.child(
+            new ButtonWidget<>().overlay(IKey.str("Load"))
+                .size(buttonWidth, 16)
+                .left(RIGHT_X + buttonWidth + 4)
+                .top(y)
+                .onMousePressed(button -> {
+                    loadPath(settings.getPathName());
+                    return true;
+                }));
+        y += 20;
+
+        panel.child(
+            new TextWidget<>(IKey.dynamic(() -> pathStatus)).scale(0.8f)
+                .textAlign(Alignment.CenterLeft)
+                .left(RIGHT_X)
+                .width(COLUMN_WIDTH)
+                .top(y)
+                .height(20));
+    }
+
+    private static void savePath(String name) {
+        SculptorCameraController camera = SculptorCameraController.instance();
+        if (camera == null) return;
+
+        if (!CameraPathStore.isValidName(name)) {
+            pathStatus = "Name: letters, digits, _ and - only";
+            return;
+        }
+
+        List<CameraKeyframe> path = camera.getPath();
+        if (path.isEmpty()) {
+            pathStatus = "Nothing to save -- no keyframes";
+            return;
+        }
+
+        try {
+            CameraPathStore.instance()
+                .save(name, path);
+            pathStatus = "Saved " + path.size() + " keyframes";
+        } catch (Exception e) {
+            pathStatus = "Save failed: " + e.getMessage();
+        }
+    }
+
+    private static void loadPath(String name) {
+        SculptorCameraController camera = SculptorCameraController.instance();
+        if (camera == null) return;
+
+        if (!CameraPathStore.isValidName(name)) {
+            pathStatus = "Name: letters, digits, _ and - only";
+            return;
+        }
+
+        try {
+            List<CameraKeyframe> path = CameraPathStore.instance()
+                .load(name);
+            camera.setPath(path);
+            pathStatus = "Loaded " + path.size() + " keyframes";
+        } catch (Exception e) {
+            pathStatus = "Load failed: " + e.getMessage();
+        }
     }
 
     /**
