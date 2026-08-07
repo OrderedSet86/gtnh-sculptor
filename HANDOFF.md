@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.2.1 released**, `main` in sync with origin, clean tree, 17 tests green.
+Current state: **0.3.0 in progress** on `main`, 25 tests green.
 
 ---
 
@@ -13,8 +13,8 @@ An interactive creative world editor for Minecraft 1.7.10 (GT New Horizons): bru
 translucent preview, an editor panel, a free camera with keyframed paths.
 
 **Sculptor is an addon to WorldEdit, not a fork of it.** It depends on `worldedit-gtnh` for the
-edit engine and registers no `//` commands beyond `//sc-undo` and `//sc-redo`. Through 0.1.0 it
-vendored WorldEdit's whole source tree under the original package names; that made it a
+edit engine and registers no `//` commands beyond its own `/scu`, `/scr` and `/scpath`. Through
+0.1.0 it vendored WorldEdit's whole source tree under the original package names; that made it a
 *replacement*, since two jars exporting `com.sk89q.worldedit` into Forge's flat classloader
 collide. 0.2.0 removed the vendored copy. Do not reintroduce it.
 
@@ -47,7 +47,7 @@ classes — theirs read through the bypassing methods and will preview wrongly.
 
 ```
 com/gtnh/sculptor/
-  SculptorMod.java          @Mod entry point; registers commands on server start
+  SculptorMod.java          @Mod entry point; server commands, and the Forge config dir
   proxy/                    Client and common proxies
   edit/
     SculptorEditContext     THE seam. All brush reads/writes.
@@ -63,11 +63,13 @@ com/gtnh/sculptor/
     SculptorBrushTool       Sculpt mode, crosshair tracking, commit
     SculptorPanel           ModularUI2 editor panel
   camera/                   Free camera + keyframed paths
+    CameraPathStore         The only file IO in the mod: config/sculptor/paths/*.dat
   render/GhostRenderer      Bakes pending changes to a VBO, draws on RenderWorldLastEvent
   preview/PreviewWorld      IBlockAccess over pending changes, for RenderBlocks
   world/SculptorGenWorld    net.minecraft.world.World routing into the context (trees only)
   network/SculptorNetwork   Commit packet; server applies and records history
-  command/SculptorCommand   //sc-undo, //sc-redo
+  command/SculptorCommand   /scu, /scr  (server)
+  command/SculptorPathCommand  /scpath  (client -- a path never reaches the server)
 ```
 
 ---
@@ -107,6 +109,31 @@ Raising by copying the surface block upward gives solid grass; lowering by cutti
 dirt. `reshapeColumn` handles both directions — use it rather than writing another column mover.
 There were three of these once, and the bug survived a fix because only one got repaired.
 
+**Never bound the surface search to a window around the brush centre.** Through 0.2.1
+`terrainSurfaceY` scanned `centreY ± (radius + 1)`, which is a tempting thing to write because it
+looks like a cheap bound on an otherwise unbounded scan. It fails silently in both directions on
+terrain with real relief. Above the window, the downward scan begins *inside* the hill and returns
+a buried block as the surface — `reshapeColumn`'s lowering half then carves from there and leaves
+everything above it standing, which is how smoothing a steep face produced an intact roof over a
+cavity. Below it, the column reports no surface and its brush skips it, which is how raise at a
+large radius lifted a scatter of single columns instead of a dome. Both read as randomness; there
+is none in those brushes. Columns are probed outward from a *neighbour's* height now
+(`sampleHeights`), which is what keeps an unbounded scan cheap — terrain is continuous, so the
+probe lands on or beside the answer. Climbing is contiguous so a bridge overhead is not mistaken
+for ground. The corollary is that a height-map brush used inside a cave finds the mountain above
+it: correct, and still not what you want. They are surface tools.
+
+**Vanilla tree generators only grow on grass, dirt and farmland, and refuse without saying so.**
+Every generator a biome can hand out asks the block below its base
+`canSustainPlant(world, x, y-1, z, UP, Blocks.sapling)`, and Forge's default answers no for
+everything else; `generate()` then returns `false` with no exception, so the brush reports success
+and nothing appears. `SculptorGenWorld` answers that read with dirt over a 2×2 footprint
+(`WorldGenHugeTrees` checks all four base columns) and drops writes there, since
+`WorldGenMegaPineTree` stamps podzol over whatever satisfied the check. Do not "fix" this by
+swapping the block for real and swapping it back: that lands in the change set twice, inflates the
+"applied N blocks" count, and is rejected outright by an air-only or replace-selected placement
+mask — silently reinstating the bug.
+
 **Do not mixin Angelica's terrain renderer.** It `@Overwrite`s `RenderGlobal.sortAndRender`,
 `clipRenderersByFrustum`, `markBlocksForUpdate` and `getDebugInfoRenders` at priority 900. Draw
 from `RenderWorldLastEvent` instead, which is also why previewing costs zero chunk rebuilds.
@@ -127,7 +154,15 @@ check was deliberately broken:
 **Minecraft's registries are not bootstrapped headlessly.** `Block.getBlockById` returns null, so
 material-based checks and all tree generation do nothing in a unit test. `SculptorBrush.TREE` is
 excluded from the equivalence loop for this reason. Anything relying on the registry needs
-in-game verification — say so rather than implying it is covered.
+in-game verification — say so rather than implying it is covered. The one exception worth knowing:
+`isFoliage` matches mushroom caps and `DOUBLE_PLANT` by block id *before* it consults the registry,
+so those three are the only plants a headless test can use as plants — anything else reads as
+solid terrain and proves nothing.
+
+**Test terrain has to have relief.** Every brush test ran on flat ground until 0.3.0, which is
+exactly why the surface-window bug above survived the suite: on flat ground the window is never
+wrong. `CliffWorld` in `BrushBehaviourTest` is thirty blocks of step for that reason. A height-map
+brush tested on a plane is testing almost nothing.
 
 ---
 
@@ -168,6 +203,16 @@ outright, unlike a 404 which falls through.
   falloff, so it leaves a profile whose local mean is itself. It bites on placements and uneven
   terrain. This is expected, not a bug.
 - **Tree preview can disagree with the commit** if a generator is busy — see the race above.
+- **Raise stands on top of tree trunks.** `isFoliage` deliberately excludes `BlockLog`, so a log is
+  ground for surface finding — a raise brush should not tunnel through a tree. Over a forest that
+  reads as stray blocks at canopy height. Deliberate, and arguably the wrong call; revisit if it
+  bites.
+- **Raise terraces.** A column moves by a whole number of blocks, so a ten-block dome has ten steps.
+  Inherent to voxels, not a falloff bug.
+- **Camera path speeds are not saved.** The tiers live in `CameraSettings` and reset to their
+  defaults each launch; a saved path stores which *tier* each keyframe uses, not its rate. So a
+  reloaded path paces correctly against whatever the tiers mean today, and a customised tier is
+  gone at the next restart.
 - **Preview at long range can be stale** where chunks are not loaded client-side. The brush reaches
   160 blocks; render distance is often less.
 - **The ghost bake runs on the render thread.** Off-thread is the obvious optimisation, but mod

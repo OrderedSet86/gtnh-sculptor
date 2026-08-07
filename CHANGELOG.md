@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.3.0
+
+**Breaking: the undo commands are now `/scu` and `/scr`.** `//sc-undo` and `/sc-undo` no
+longer exist. Undo is reached for constantly while sculpting and did not deserve nine
+keystrokes and a dash. `//scu` and `//scr` work too, for the double-slash habit.
+
+### Editing
+
+- **Camera paths can be saved and loaded.** `/scpath save <name>`, `load`, `list`,
+  `delete`, and Save/Load buttons in the panel's camera column. Paths are NBT files under
+  `config/sculptor/paths/`, so a shot survives a restart, survives a stray press of `Del`,
+  and can be copied between instances or handed to someone else.
+- **Trees plant on any ground.** Vanilla's generators only grow on grass, dirt or
+  farmland and refuse silently otherwise — so a tree brushed onto sculpted stained clay or
+  stone looked like the brush had simply done nothing. The soil is now reported as dirt
+  for the generator's benefit only: no block is written, the material you sculpted with is
+  still there afterwards, and nothing extra lands in undo history.
+
+### Fixes
+
+- **Aggressive smoothing hollowed out steep ground.** Surface finding searched a window of
+  `centre ± (radius + 1)`, so on relief taller than that it began its scan *inside* the
+  hill and reported a buried block as the surface. Lowering then cleared from there down
+  and left everything above untouched — an intact slab of terrain over a fresh cavity.
+  Columns are now probed outward from their own height, with no window at all.
+- **Raise at a large radius lifted scattered single columns.** The same window, in the
+  other direction: ground more than `radius + 1` below the crosshair reported no surface
+  and was skipped, so on a slope whichever columns happened to poke above the boundary
+  rose and their neighbours did not. There was never any randomness in the brush.
+- **Lowering left plants floating.** Foliage sits above the surface, so it was outside the
+  range being cleared and survived the ground dropping out from under it.
+
+
 ## 0.2.0
 
 **Breaking: Sculptor is now an addon to WorldEdit and requires it.**

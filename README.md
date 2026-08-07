@@ -17,7 +17,7 @@ command and hope. Sculptor adds the layer that modern creative-building tools ha
 
 > **Sculptor requires WorldEdit and installs alongside it.** Keep `worldedit-*.jar` where it
 > is — Sculptor will not load without it, and registers no `//` commands of its own beyond
-> its two undo commands.
+> its own undo, redo and camera-path commands.
 
 Drop the jar in `mods/`. It is a universal Forge mod — the same file goes on the client and on
 the server, and both need it for the editor to work in multiplayer.
@@ -42,22 +42,29 @@ Everything is rebindable under **Options → Controls → Sculptor**.
 | `C` | Toggle free camera |
 | `J` / `K` / `M` | Add camera keyframe — slow / normal / fast approach |
 | `P` | Play or stop the camera path |
-| `Del` | Clear the camera path |
+| `Del` | Clear the camera path (save it first — see `/scpath` below) |
 
 Undo is a command rather than a key, since it is destructive and a key that far-reaching is too
 easy to hit mid-stroke:
 
 | Command | |
 |---|---|
-| `//sc-undo` | Undo your last Sculptor edit |
-| `//sc-redo` | Redo the edit you undid |
+| `/scu` | Undo your last Sculptor edit |
+| `/scr` | Redo the edit you undid |
+| `/scpath save\|load\|delete <name>` | Save, reload or remove a camera path |
+| `/scpath list` | What you have saved |
 
-These are separate from WorldEdit's `//undo`, which walks your command history and will not
-revert a brush stroke — and Sculptor's will not revert a `//` command.
+Undo and redo also answer to `//scu` and `//scr`. They are separate from WorldEdit's `//undo`,
+which walks your command history and will not revert a brush stroke — and Sculptor's will not
+revert a `//` command.
 
 A keyframe's tier sets the speed of the move *into* it, and a segment takes as long as its
 length needs at that speed — so a long establishing move and a short detail move read as
 the same camera. Speeds are editable, in blocks/sec, in the panel.
+
+Paths are saved under `config/sculptor/paths/` as NBT, one file per name, so they survive a
+restart and can be copied between instances. The panel's camera column has Save and Load
+buttons for the name in its text field, which is the same store `/scpath` uses.
 
 ## How the preview works
 
