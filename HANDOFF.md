@@ -179,6 +179,14 @@ brush tested on a plane is testing almost nothing.
 `run/server/server.properties` is set to **25566**, not 25565 — the maintainer runs another
 Minecraft server on the default port. Do not kill processes on 25565.
 
+**Write the changelog section before releasing.** The release body is assembled from
+`.github/release-preamble.md` — which holds the install prose and a `<!-- changelog -->` marker —
+and the `## <version>` section of `CHANGELOG.md`. A version with no section fails the workflow,
+deliberately, and it fails *before* the tag is pushed so there is nothing to clean up. Edit those
+two files rather than the workflow: the install notes claimed Sculptor replaced WorldEdit for two
+releases after it stopped doing so, because they were buried in YAML and edited by hand on the
+release page each time.
+
 **Releases are manual.** Actions → Release → type the version. The workflow creates the tag
 itself, builds, verifies the jar declares `modid=sculptor` and the right version, and publishes.
 It is deliberately *not* triggered by pushing a tag, since it makes the tag — both triggers would

@@ -54,6 +54,36 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_ENV"
 
+      # Before tagging on purpose. A version with no changelog section is a mistake, and
+      # catching it here means there is no pushed tag to clean up afterwards.
+      - name: Build the release body
+        run: |
+          set -euo pipefail
+
+          grep -q '^<!-- changelog -->$' .github/release-preamble.md \
+            || { echo "::error::.github/release-preamble.md has lost its <!-- changelog --> marker"; exit 1; }
+
+          # The notes live in CHANGELOG.md rather than in this file, so the prose has one
+          # home and cannot drift between the repository and the release page.
+          awk -v heading="## $version" '
+            $0 == heading      { inside = 1; next }
+            inside && /^## /   { exit }
+            inside             { print }
+          ' CHANGELOG.md > /tmp/notes.md
+
+          if [ -z "$(tr -d '[:space:]' < /tmp/notes.md)" ]; then
+            echo "::error::CHANGELOG.md has no '## $version' section. Write one and re-run."
+            exit 1
+          fi
+
+          awk '$0 == "<!-- changelog -->" {
+                 while ((getline line < "/tmp/notes.md") > 0) print line
+                 next
+               }
+               { print }' .github/release-preamble.md > release-body.md
+
+          cat release-body.md
+
       - name: Tag the release commit
         run: |
           set -euo pipefail
@@ -125,25 +155,9 @@ jobs:
           files: |
             ${{ steps.jar.outputs.path }}
             build/libs/sculptor-*-sources.jar
-          body: |
-            An interactive creative world editor for Minecraft 1.7.10.
-
-            ## Installing
-
-            > **Sculptor requires WorldEdit and installs alongside it.** Keep
-            > `worldedit-*.jar` where it is — Sculptor will not load without it.
-
-            Drop the jar in `mods/`. It is a universal Forge mod — the same file goes on the
-            client and on the server, and both need it for the editor to work in multiplayer.
-
-            Requires **worldedit-gtnh**, **GTNHLib** and **ModularUI2**. **Angelica** is
-            optional but is what the ghost renderer is designed against.
-
-            On a server, applying a brush requires permission: op by default, or the
-            `sculptor.brush` node if a permissions mod is installed.
-
-            See the [README](https://github.com/OrderedSet86/gtnh-sculptor#readme) for
-            controls and known gaps.
+          # Assembled from .github/release-preamble.md and the CHANGELOG.md section for this
+          # version. Edit those, not this file.
+          body_path: release-body.md
 
       - name: Clean up tag on failure
         if: failure()
