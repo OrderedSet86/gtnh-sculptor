@@ -16,6 +16,9 @@
 package com.gtnh.sculptor.brush;
 
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockBush;
+import net.minecraft.block.BlockLeavesBase;
+import net.minecraft.block.BlockVine;
 import net.minecraft.block.material.Material;
 
 import com.gtnh.sculptor.edit.SculptorEditContext;
@@ -64,6 +67,26 @@ public final class Brushes {
     private static BaseBlock surfaceMaterial(SculptorEditContext ctx, BrushParams params, int x, int surfaceY, int z) {
         if (params.useSelectedMaterial) return params.material;
         return ctx.getBlock(new Vector(x, surfaceY, z));
+    }
+
+    /**
+     * The top block of the actual ground, ignoring anything growing on it.
+     *
+     * <p>
+     * Plain "highest non-air" would treat a tuft of grass as the surface, so raising a grassy
+     * hillside would stack copies of the grass rather than the ground under it.
+     * </p>
+     */
+    private static int terrainSurfaceY(SculptorEditContext ctx, int x, int z, int topY, int bottomY) {
+        int from = Math.min(255, topY);
+        int to = Math.max(0, bottomY);
+        for (int y = from; y >= to; y--) {
+            BaseBlock block = ctx.getBlock(new Vector(x, y, z));
+            if (block.getType() == BlockID.AIR) continue;
+            if (isFoliage(block)) continue;
+            return y;
+        }
+        return Integer.MIN_VALUE;
     }
 
     // ---------------------------------------------------------------- shapes
@@ -137,16 +160,11 @@ public final class Brushes {
 
                 int x = cx + dx;
                 int z = cz + dz;
-                int surface = ctx.surfaceY(x, z, cy + r + 1, cy - r - 1);
+                int surface = terrainSurfaceY(ctx, x, z, cy + r + 1, cy - r - 1);
                 if (surface == Integer.MIN_VALUE) continue;
 
                 if (sign > 0) {
-                    BaseBlock fill = surfaceMaterial(ctx, params, x, surface, z);
-                    for (int i = 1; i <= amount; i++) {
-                        int y = surface + i;
-                        if (y > 255) break;
-                        ctx.setBlock(x, y, z, fill);
-                    }
+                    raiseColumn(ctx, params, x, z, surface, amount);
                 } else {
                     for (int i = 0; i < amount; i++) {
                         int y = surface - i;
@@ -156,6 +174,40 @@ public final class Brushes {
                 }
             }
         }
+    }
+
+    /**
+     * Extend a column upward, keeping its surface block on top.
+     *
+     * <p>
+     * Naively copying the surface block upward turns a grassy hill into a solid block of grass.
+     * Real ground has a skin over a filler, so the old surface is buried as filler and the
+     * surface block is re-laid on the new top. The filler is whatever was directly beneath --
+     * dirt under grass, sand under sand -- so this works for any material without a lookup
+     * table, modded ones included.
+     * </p>
+     */
+    private static void raiseColumn(SculptorEditContext ctx, BrushParams params, int x, int z, int surface, int amount)
+        throws MaxChangedBlocksException {
+        BaseBlock top = params.useSelectedMaterial ? params.material : ctx.getBlock(new Vector(x, surface, z));
+
+        BaseBlock filler = top;
+        if (!params.useSelectedMaterial && surface > 0) {
+            BaseBlock below = ctx.getBlock(new Vector(x, surface - 1, z));
+            if (below.getType() != BlockID.AIR && !isFoliage(below)) {
+                filler = below;
+            }
+        }
+
+        // Everything from the old surface up to just below the new top becomes filler; the old
+        // surface block is now buried and should not stay a surface block.
+        for (int y = surface; y < surface + amount; y++) {
+            if (y > 255) break;
+            ctx.setBlock(x, y, z, filler);
+        }
+
+        int newTop = Math.min(255, surface + amount);
+        ctx.setBlock(x, newTop, z, top);
     }
 
     /**
@@ -175,7 +227,7 @@ public final class Brushes {
 
                 int x = cx + dx;
                 int z = cz + dz;
-                int surface = ctx.surfaceY(x, z, targetY + r + 1, targetY - r - 1);
+                int surface = terrainSurfaceY(ctx, x, z, targetY + r + 1, targetY - r - 1);
                 if (surface == Integer.MIN_VALUE) continue;
 
                 // Move only part of the way, scaled by falloff, so the brush edge blends
@@ -203,16 +255,24 @@ public final class Brushes {
         int r = params.radius;
         int width = 2 * r + 1;
 
-        int[] heights = new int[width * width];
+        int[] original = new int[width * width];
+        double[] heights = new double[width * width];
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
-                heights[(dz + r) * width + (dx + r)] = ctx.surfaceY(cx + dx, cz + dz, cy + r + 1, cy - r - 1);
+                int index = (dz + r) * width + (dx + r);
+                int surface = terrainSurfaceY(ctx, cx + dx, cz + dz, cy + r + 1, cy - r - 1);
+                original[index] = surface;
+                heights[index] = (surface == Integer.MIN_VALUE) ? Double.NaN : surface;
             }
         }
 
-        int[] source = heights;
+        // Heights stay fractional between passes. Rounding each iteration back to whole blocks
+        // destroys exactly the sub-block detail smoothing works with: the mean of a slope moves
+        // a column by a fraction of a block, which rounds straight back to where it started, and
+        // the whole operation becomes a no-op.
+        double[] source = heights;
         for (int pass = 0; pass < Math.max(1, iterations); pass++) {
-            int[] next = new int[width * width];
+            double[] next = new double[width * width];
             for (int iz = 0; iz < width; iz++) {
                 for (int ix = 0; ix < width; ix++) {
                     next[iz * width + ix] = averageNeighbours(source, width, ix, iz);
@@ -227,32 +287,37 @@ public final class Brushes {
                 if (weight <= 0.0D) continue;
 
                 int index = (dz + r) * width + (dx + r);
-                int original = heights[index];
-                int smoothed = source[index];
-                if (original == Integer.MIN_VALUE || smoothed == Integer.MIN_VALUE) continue;
+                int surface = original[index];
+                double smoothed = source[index];
+                if (surface == Integer.MIN_VALUE || Double.isNaN(smoothed)) continue;
 
-                int desired = (int) Math.round(original + (smoothed - original) * weight * params.strength);
-                moveColumnTo(ctx, params, cx + dx, cz + dz, original, desired);
+                // Blend by strength alone. Falloff bounds the area -- the loop above skips
+                // anything past the rim -- but must not scale the correction as well: the
+                // features worth smoothing sit near the edge of a wide smoothing radius, where
+                // falloff is smallest, so damping by it shrinks a genuine one-block correction
+                // to a fraction and rounding then discards it entirely.
+                int desired = (int) Math.round(surface + (smoothed - surface) * params.strength);
+                moveColumnTo(ctx, params, cx + dx, cz + dz, surface, desired);
             }
         }
     }
 
     /** Mean of the 3x3 neighbourhood, skipping empty columns so they do not drag the average. */
-    private static int averageNeighbours(int[] heights, int width, int ix, int iz) {
-        int sum = 0;
+    private static double averageNeighbours(double[] heights, int width, int ix, int iz) {
+        double sum = 0.0D;
         int count = 0;
         for (int oz = -1; oz <= 1; oz++) {
             for (int ox = -1; ox <= 1; ox++) {
                 int nx = ix + ox;
                 int nz = iz + oz;
                 if (nx < 0 || nz < 0 || nx >= width || nz >= width) continue;
-                int h = heights[nz * width + nx];
-                if (h == Integer.MIN_VALUE) continue;
+                double h = heights[nz * width + nx];
+                if (Double.isNaN(h)) continue;
                 sum += h;
                 count++;
             }
         }
-        return (count == 0) ? Integer.MIN_VALUE : Math.round((float) sum / count);
+        return (count == 0) ? Double.NaN : sum / count;
     }
 
     /** Raise or cut a single column from its current surface to a target height. */
@@ -421,13 +486,22 @@ public final class Brushes {
         }
     }
 
+    /**
+     * Whether a block counts as foliage: leaves, grass, flowers, saplings, vines, mushrooms.
+     *
+     * <p>
+     * Checked by block class first and material second. Modded packs routinely define their own
+     * {@code Material} instances for custom leaves and plants, and materials are compared by
+     * identity, so a material-only test quietly misses most of GTNH's flora. The block classes
+     * are what mods actually extend.
+     * </p>
+     */
     public static boolean isFoliage(BaseBlock block) {
         int id = block.getType();
         if (id == BlockID.AIR) return false;
 
         switch (id) {
-            // Mushroom caps and double plants report materials that are not in the set below,
-            // so name them explicitly.
+            // Mushroom caps and double plants do not report a foliage material.
             case BlockID.BROWN_MUSHROOM_CAP:
             case BlockID.RED_MUSHROOM_CAP:
             case BlockID.DOUBLE_PLANT:
@@ -438,6 +512,10 @@ public final class Brushes {
 
         Block mcBlock = Block.getBlockById(id);
         if (mcBlock == null) return false;
+
+        if (mcBlock instanceof BlockLeavesBase || mcBlock instanceof BlockBush || mcBlock instanceof BlockVine) {
+            return true;
+        }
 
         Material material = mcBlock.getMaterial();
         return material == Material.leaves || material == Material.plants || material == Material.vine;

@@ -162,10 +162,12 @@ public class SculptorCameraController {
     private void attach(Minecraft mc) {
         EntityClientPlayerMP player = mc.thePlayer;
 
+        // posY is already the eye anchor for a player in 1.7.10 -- the bounding box hangs
+        // below it by yOffset -- so adding eye height again would start the camera high.
         camera = new SculptorCamera(
             mc.theWorld,
             player.posX,
-            player.posY + player.getEyeHeight(),
+            player.posY,
             player.posZ,
             player.rotationYaw,
             player.rotationPitch);

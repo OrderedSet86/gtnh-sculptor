@@ -35,9 +35,9 @@ public enum SculptorBrush {
     HOLLOW_CYLINDER("Hollow cylinder", "Height", 1, 32, false, true),
     SMOOTH("Smooth", "Iterations", 1, 8, true, false),
     GRAVITY("Gravity", null, 0, 0, false, false),
-    RAISE("Raise", null, 0, 0, true, false),
-    LOWER("Lower", null, 0, 0, true, false),
-    FLATTEN("Flatten", null, 0, 0, true, false),
+    RAISE("Raise", null, 0, 0, true, true),
+    LOWER("Lower", null, 0, 0, true, true),
+    FLATTEN("Flatten", null, 0, 0, true, true),
     ERODE("Erode", null, 0, 0, true, false),
     MELT("Melt", null, 0, 0, true, false),
     REMOVE_FOLIAGE("Remove foliage", null, 0, 0, false, false);
@@ -49,20 +49,24 @@ public enum SculptorBrush {
     private final boolean usesStrength;
 
     /**
-     * Whether this brush places a shape rather than reworking existing terrain. Only these get
-     * the optional smoothing pass afterwards -- smoothing the output of a smooth brush is not a
-     * meaningful thing to offer.
+     * Whether the optional smoothing pass runs after this brush.
+     *
+     * <p>
+     * True for anything that reshapes ground the height map can see. Not for smooth itself,
+     * which would be circular, nor for gravity, erode, melt or foliage removal, whose whole
+     * point is detail that smoothing would immediately undo.
+     * </p>
      */
-    private final boolean placement;
+    private final boolean autoSmoothable;
 
     SculptorBrush(String label, String secondaryLabel, int secondaryMin, int secondaryMax, boolean usesStrength,
-        boolean placement) {
+        boolean autoSmoothable) {
         this.label = label;
         this.secondaryLabel = secondaryLabel;
         this.secondaryMin = secondaryMin;
         this.secondaryMax = secondaryMax;
         this.usesStrength = usesStrength;
-        this.placement = placement;
+        this.autoSmoothable = autoSmoothable;
     }
 
     public String label() {
@@ -89,8 +93,8 @@ public enum SculptorBrush {
         return usesStrength;
     }
 
-    public boolean isPlacement() {
-        return placement;
+    public boolean isAutoSmoothable() {
+        return autoSmoothable;
     }
 
     /**
@@ -143,20 +147,27 @@ public enum SculptorBrush {
                 break;
         }
 
-        if (placement && params.autoSmooth > 0.0D) {
+        if (autoSmoothable && params.autoSmooth > 0.0D) {
             // Runs through the same context, so in commit mode it lands in the same undo entry
             // and in preview mode the ghost already shows the smoothed result.
             //
-            // A wider radius than the placement itself, so the new shape is blended into the
-            // ground around it rather than having its own edge smoothed in isolation.
+            // Reaches well past the brush so the new shape is blended into the ground around it.
+            // Smoothing only the footprint would just round the thing off in isolation and leave
+            // the seam where it meets untouched terrain, which is the opposite of the point.
+            int reach = params.radius + Math.max(3, params.radius / 2);
+            // Diffusion has to travel. A single pass shifts a column next to a two-block step by
+            // well under half a block, which rounds away to nothing, so the blend only reaches
+            // past the brush once enough passes have spread it -- more of them the stronger the
+            // setting.
+            int passes = Math.max(2, (int) Math.round(params.autoSmooth * 6.0D));
             BrushParams smoothing = new BrushParams(
-                params.radius + 2,
+                reach,
                 params.material,
                 params.secondary,
                 params.autoSmooth,
                 0.0D,
                 params.useSelectedMaterial);
-            Brushes.smooth(ctx, centre, smoothing, 2);
+            Brushes.smooth(ctx, centre, smoothing, passes);
         }
     }
 

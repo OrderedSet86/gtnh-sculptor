@@ -128,7 +128,12 @@ public class SculptorEditContext {
      * @return true if the block was written, false if the mask rejected it
      */
     public boolean setBlock(Vector position, BaseBlock block) throws MaxChangedBlocksException {
-        if (!placementMask.allows(getBlock(position), material)) {
+        // The mask governs what may be built *over*, so it only applies to placing something.
+        // Gating removals on it too would mean "air only" silently disabled every brush that
+        // carves -- erode, lower, foliage removal -- since none of them can write air over a
+        // block that is by definition not air.
+        boolean placing = block.getType() != BlockID.AIR;
+        if (placing && !placementMask.allows(getBlock(position), material)) {
             return false;
         }
 
