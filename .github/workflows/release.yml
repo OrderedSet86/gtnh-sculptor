@@ -130,15 +130,14 @@ jobs:
 
             ## Installing
 
-            > **Sculptor replaces WorldEdit. Do not install both.**
-            > It contains WorldEdit and registers the same commands, so running them
-            > together will collide. Remove `worldedit-*.jar` from `mods/` first.
+            > **Sculptor requires WorldEdit and installs alongside it.** Keep
+            > `worldedit-*.jar` where it is — Sculptor will not load without it.
 
             Drop the jar in `mods/`. It is a universal Forge mod — the same file goes on the
             client and on the server, and both need it for the editor to work in multiplayer.
 
-            Requires **GTNHLib**, **ModularUI2** and **UniMixins**. **Angelica** is optional
-            but is what the ghost renderer is designed against.
+            Requires **worldedit-gtnh**, **GTNHLib** and **ModularUI2**. **Angelica** is
+            optional but is what the ghost renderer is designed against.
 
             On a server, applying a brush requires permission: op by default, or the
             `sculptor.brush` node if a permissions mod is installed.
