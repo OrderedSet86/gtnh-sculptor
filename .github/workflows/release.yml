@@ -69,20 +69,37 @@ jobs:
             $0 == heading      { inside = 1; next }
             inside && /^## /   { exit }
             inside             { print }
-          ' CHANGELOG.md > /tmp/notes.md
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
 
-          if [ -z "$(tr -d '[:space:]' < /tmp/notes.md)" ]; then
+          if [ -z "$(tr -d '[:space:]' < "$RUNNER_TEMP/notes.md")" ]; then
             echo "::error::CHANGELOG.md has no '## $version' section. Write one and re-run."
             exit 1
           fi
 
-          awk '$0 == "<!-- changelog -->" {
-                 while ((getline line < "/tmp/notes.md") > 0) print line
-                 next
-               }
-               { print }' .github/release-preamble.md > release-body.md
+          # Written outside the checkout, and it matters. The mod version comes from
+          # git describe, so a stray untracked file in the working tree makes the build
+          # stamp the jar 0.3.1-main+<sha>-dirty instead of 0.3.1 -- which the jar identity
+          # check then rejects, several minutes and one pushed tag later.
+          awk -v notes="$RUNNER_TEMP/notes.md" '
+            $0 == "<!-- changelog -->" {
+              while ((getline line < notes) > 0) print line
+              next
+            }
+            { print }' .github/release-preamble.md > "$RUNNER_TEMP/release-body.md"
 
-          cat release-body.md
+          cat "$RUNNER_TEMP/release-body.md"
+
+      # The jar identity check at the end already catches a dirty build, but only after a
+      # tag has been pushed and the whole build has run. Checking here names the cause
+      # instead of leaving a mismatched version string to be worked backwards from.
+      - name: Check the working tree is clean
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            echo "::error::the working tree is dirty, so the jar would be stamped -dirty rather than $version. A workflow step is writing into the checkout."
+            exit 1
+          fi
 
       - name: Tag the release commit
         run: |
@@ -157,7 +174,7 @@ jobs:
             build/libs/sculptor-*-sources.jar
           # Assembled from .github/release-preamble.md and the CHANGELOG.md section for this
           # version. Edit those, not this file.
-          body_path: release-body.md
+          body_path: ${{ runner.temp }}/release-body.md
 
       - name: Clean up tag on failure
         if: failure()
