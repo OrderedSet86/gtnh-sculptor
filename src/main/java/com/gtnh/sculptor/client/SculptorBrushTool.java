@@ -141,7 +141,7 @@ public class SculptorBrushTool {
             ClientGUI.open(new SculptorPanel());
         }
 
-        // Undo is //sc-undo, not a key. It is destructive and infrequent, and a key that
+        // Undo is /scu, not a key. It is destructive and infrequent, and a key that
         // far-reaching is too easy to hit by accident mid-stroke.
 
         // Commit is driven from the tick instead of here, so that holding the key repeats.

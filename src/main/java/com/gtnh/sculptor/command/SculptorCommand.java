@@ -37,8 +37,10 @@ import com.sk89q.worldedit.forge.ForgeWorldEdit;
  * </p>
  *
  * <p>
- * Registered under a name beginning with {@code /} so it is typed as {@code //sc-undo},
- * matching WorldEdit's convention, with a plain alias so {@code /sc-undo} works too.
+ * Named for how often it is typed. Undo is reached for constantly while sculpting, and
+ * {@code //sc-undo} is four more keystrokes than the operation deserves -- the dash especially,
+ * sitting where it does. The primary name is the short {@code /scu}, with {@code //scu} kept as an
+ * alias so WorldEdit's double-slash habit still lands.
  * </p>
  */
 public class SculptorCommand extends CommandBase {
@@ -61,19 +63,23 @@ public class SculptorCommand extends CommandBase {
 
     @Override
     public String getCommandName() {
-        return undo ? "/sc-undo" : "/sc-redo";
+        return undo ? "scu" : "scr";
     }
 
+    /**
+     * The {@code /}-prefixed form is a separate map key, not a variant of the name, so
+     * {@code //scu} only works if it is registered as its own alias.
+     */
     @Override
     public List<String> getCommandAliases() {
         List<String> aliases = new ArrayList<String>();
-        aliases.add(undo ? "sc-undo" : "sc-redo");
+        aliases.add(undo ? "/scu" : "/scr");
         return aliases;
     }
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return undo ? "//sc-undo - undo your last Sculptor edit" : "//sc-redo - redo the Sculptor edit you undid";
+        return undo ? "/scu - undo your last Sculptor edit" : "/scr - redo the Sculptor edit you undid";
     }
 
     /**
