@@ -15,6 +15,7 @@
 
 package com.gtnh.sculptor.brush;
 
+import com.gtnh.sculptor.edit.PlacementMask;
 import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.blocks.BlockID;
 
@@ -44,6 +45,15 @@ public final class BrushSettings {
 
     /** 0..1, how forcefully a terrain brush acts. */
     private double strength = 0.5D;
+
+    /** What placement brushes are allowed to write over. */
+    private PlacementMask placementMask = PlacementMask.OVERWRITE;
+
+    /** 0..1 smoothing applied after a placement brush; zero disables it. */
+    private double autoSmooth = 0.0D;
+
+    /** Build with the chosen block rather than copying the existing surface material. */
+    private boolean useSelectedMaterial = false;
 
     /** Bumped whenever anything changes, so the preview knows it is stale. */
     private int revision;
@@ -125,6 +135,45 @@ public final class BrushSettings {
 
     public BaseBlock getMaterial() {
         return new BaseBlock(materialId, materialData);
+    }
+
+    public PlacementMask getPlacementMask() {
+        return placementMask;
+    }
+
+    public void setPlacementMask(PlacementMask mask) {
+        if (mask != null && mask != this.placementMask) {
+            this.placementMask = mask;
+            revision++;
+        }
+    }
+
+    public double getAutoSmooth() {
+        return autoSmooth;
+    }
+
+    public void setAutoSmooth(double value) {
+        double clamped = Math.max(0.0D, Math.min(1.0D, value));
+        if (clamped != this.autoSmooth) {
+            this.autoSmooth = clamped;
+            revision++;
+        }
+    }
+
+    public boolean isUseSelectedMaterial() {
+        return useSelectedMaterial;
+    }
+
+    public void setUseSelectedMaterial(boolean value) {
+        if (value != this.useSelectedMaterial) {
+            this.useSelectedMaterial = value;
+            revision++;
+        }
+    }
+
+    /** Snapshot the current configuration for a brush run. */
+    public BrushParams toParams() {
+        return new BrushParams(radius, getMaterial(), secondary, strength, autoSmooth, useSelectedMaterial);
     }
 
     /**

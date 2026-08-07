@@ -27,11 +27,10 @@ import org.lwjgl.input.Keyboard;
 
 import com.cleanroommc.modularui.factory.ClientGUI;
 import com.gtnh.sculptor.brush.BrushSettings;
+import com.gtnh.sculptor.edit.SculptorEditContext;
 import com.gtnh.sculptor.network.SculptorNetwork;
 import com.gtnh.sculptor.render.GhostRenderer;
-import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.forge.ForgeWorldEdit;
 
 import cpw.mods.fml.client.registry.ClientRegistry;
@@ -59,15 +58,24 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  */
 public class SculptorBrushTool {
 
-    private static final KeyBinding TOGGLE_KEY = new KeyBinding(
-        "Sculptor: toggle sculpt mode",
-        Keyboard.KEY_B,
-        "Sculptor");
-    private static final KeyBinding COMMIT_KEY = new KeyBinding("Sculptor: commit brush", Keyboard.KEY_V, "Sculptor");
-    private static final KeyBinding PANEL_KEY = new KeyBinding(
-        "Sculptor: open editor panel",
-        Keyboard.KEY_N,
-        "Sculptor");
+    /**
+     * Key descriptions must not contain a colon.
+     *
+     * <p>
+     * {@code GameSettings} persists bindings as {@code key_<description>:<code>} and parses
+     * them back with {@code split(":")}, comparing only the first field. A description like
+     * "Sculptor: commit brush" splits in the wrong place, matches nothing on load, and the
+     * rebind is silently discarded and then overwritten on the next save. Lang keys are the
+     * conventional form and have no colon.
+     * </p>
+     */
+    private static final String CATEGORY = "key.categories.sculptor";
+
+    private static final KeyBinding TOGGLE_KEY = new KeyBinding("key.sculptor.brush.toggle", Keyboard.KEY_B, CATEGORY);
+    private static final KeyBinding COMMIT_KEY = new KeyBinding("key.sculptor.brush.commit", Keyboard.KEY_V, CATEGORY);
+    private static final KeyBinding PANEL_KEY = new KeyBinding("key.sculptor.brush.panel", Keyboard.KEY_N, CATEGORY);
+    private static final KeyBinding UNDO_KEY = new KeyBinding("key.sculptor.brush.undo", Keyboard.KEY_Z, CATEGORY);
+    private static final KeyBinding REDO_KEY = new KeyBinding("key.sculptor.brush.redo", Keyboard.KEY_Y, CATEGORY);
 
     /**
      * How far the brush can reach, in blocks.
@@ -112,6 +120,8 @@ public class SculptorBrushTool {
         ClientRegistry.registerKeyBinding(TOGGLE_KEY);
         ClientRegistry.registerKeyBinding(COMMIT_KEY);
         ClientRegistry.registerKeyBinding(PANEL_KEY);
+        ClientRegistry.registerKeyBinding(UNDO_KEY);
+        ClientRegistry.registerKeyBinding(REDO_KEY);
     }
 
     public boolean isActive() {
@@ -134,6 +144,11 @@ public class SculptorBrushTool {
         if (PANEL_KEY.isPressed()) {
             ClientGUI.open(new SculptorPanel());
         }
+
+        // Undo and redo are Sculptor's own, not WorldEdit's. //undo will not revert a brush
+        // stroke and this will not revert a // command.
+        if (UNDO_KEY.isPressed()) SculptorNetwork.sendUndo();
+        if (REDO_KEY.isPressed()) SculptorNetwork.sendRedo();
 
         // Commit is driven from the tick instead of here, so that holding the key repeats.
     }
@@ -194,23 +209,18 @@ public class SculptorBrushTool {
     private void updatePreview(Minecraft mc, int x, int y, int z, int revision) {
         BrushSettings settings = BrushSettings.instance();
         try {
-            EditSession preview = WorldEdit.getInstance()
-                .getEditSessionFactory()
-                .getPreviewEditSession(ForgeWorldEdit.inst.getWorld(mc.theWorld), -1);
+            // Reads the client's copy of the world; captures rather than writing, so nothing
+            // reaches the server until the player commits.
+            SculptorEditContext ctx = SculptorEditContext.preview(ForgeWorldEdit.inst.getWorld(mc.theWorld));
+            ctx.setPlacementMask(settings.getPlacementMask());
 
             settings.getBrush()
-                .apply(
-                    preview,
-                    new Vector(x, y, z),
-                    settings.getRadius(),
-                    settings.getMaterial(),
-                    settings.getSecondary(),
-                    settings.getStrength());
+                .apply(ctx, new Vector(x, y, z), settings.toParams());
 
-            previewedBlocks = preview.getPendingChanges()
+            previewedBlocks = ctx.getPendingChanges()
                 .size();
             GhostRenderer.instance()
-                .setPreview(preview.getPendingChanges());
+                .setPreview(ctx.getPendingChanges());
 
             lastX = x;
             lastY = y;
@@ -230,16 +240,8 @@ public class SculptorBrushTool {
         // crosshair crossed the sky.
         if (!hasPreview) return;
         BrushSettings settings = BrushSettings.instance();
-        SculptorNetwork.sendCommit(
-            settings.getBrush(),
-            lastX,
-            lastY,
-            lastZ,
-            settings.getRadius(),
-            settings.getMaterialId(),
-            settings.getMaterialData(),
-            settings.getSecondary(),
-            settings.getStrength());
+        SculptorNetwork
+            .sendCommit(settings.getBrush(), lastX, lastY, lastZ, settings.toParams(), settings.getPlacementMask());
 
         // Mark stale rather than clearing: the ghost stays on screen until the rebuild replaces
         // it, which stops a held commit from strobing the preview on and off.

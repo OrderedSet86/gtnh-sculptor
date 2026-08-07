@@ -15,58 +15,32 @@
 
 package com.gtnh.sculptor.brush;
 
-import com.sk89q.worldedit.EditSession;
+import com.gtnh.sculptor.edit.SculptorEditContext;
 import com.sk89q.worldedit.MaxChangedBlocksException;
 import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.blocks.BaseBlock;
-import com.sk89q.worldedit.command.tool.brush.Brush;
-import com.sk89q.worldedit.command.tool.brush.CylinderBrush;
-import com.sk89q.worldedit.command.tool.brush.GravityBrush;
-import com.sk89q.worldedit.command.tool.brush.HollowCylinderBrush;
-import com.sk89q.worldedit.command.tool.brush.HollowSphereBrush;
-import com.sk89q.worldedit.command.tool.brush.SmoothBrush;
-import com.sk89q.worldedit.command.tool.brush.SphereBrush;
-import com.sk89q.worldedit.function.pattern.BlockPattern;
 
 /**
  * The brushes Sculptor offers, and the single place that says what each one does.
  *
  * <p>
- * The shape brushes are WorldEdit's own {@link Brush} implementations, reused unmodified. They
- * need no changes to be previewable: a brush writes to an {@code EditSession} and never learns
- * whether that session is applying changes or capturing them.
- * </p>
- *
- * <p>
- * The terrain brushes in {@link TerrainBrushes} are ours, because WorldEdit has no equivalent --
- * its brushes are binary, and terrain shaping needs an amount that tapers toward the edge of the
- * stroke.
- * </p>
- *
- * <p>
- * Brushes are constructed per use rather than shared, because several take parameters (a
- * cylinder's height, a smooth's iteration count, a terrain brush's strength) that the user can
- * change between strokes.
- * </p>
- *
- * <p>
  * Preview and commit both dispatch through {@link #apply}, so there is no way for the ghost to
- * disagree with the result: they are the same call against different sessions.
+ * disagree with the result: they are the same call against a context backed differently.
  * </p>
  */
 public enum SculptorBrush {
 
-    SPHERE("Sphere", null, 0, 0, false),
-    HOLLOW_SPHERE("Hollow sphere", null, 0, 0, false),
-    CYLINDER("Cylinder", "Height", 1, 32, false),
-    HOLLOW_CYLINDER("Hollow cylinder", "Height", 1, 32, false),
-    SMOOTH("Smooth", "Iterations", 1, 8, false),
-    GRAVITY("Gravity", null, 0, 0, false),
-    RAISE("Raise", null, 0, 0, true),
-    LOWER("Lower", null, 0, 0, true),
-    FLATTEN("Flatten", null, 0, 0, true),
-    ERODE("Erode", null, 0, 0, true),
-    MELT("Melt", null, 0, 0, true);
+    SPHERE("Sphere", null, 0, 0, false, true),
+    HOLLOW_SPHERE("Hollow sphere", null, 0, 0, false, true),
+    CYLINDER("Cylinder", "Height", 1, 32, false, true),
+    HOLLOW_CYLINDER("Hollow cylinder", "Height", 1, 32, false, true),
+    SMOOTH("Smooth", "Iterations", 1, 8, true, false),
+    GRAVITY("Gravity", null, 0, 0, false, false),
+    RAISE("Raise", null, 0, 0, true, false),
+    LOWER("Lower", null, 0, 0, true, false),
+    FLATTEN("Flatten", null, 0, 0, true, false),
+    ERODE("Erode", null, 0, 0, true, false),
+    MELT("Melt", null, 0, 0, true, false),
+    REMOVE_FOLIAGE("Remove foliage", null, 0, 0, false, false);
 
     private final String label;
     private final String secondaryLabel;
@@ -74,19 +48,27 @@ public enum SculptorBrush {
     private final int secondaryMax;
     private final boolean usesStrength;
 
-    SculptorBrush(String label, String secondaryLabel, int secondaryMin, int secondaryMax, boolean usesStrength) {
+    /**
+     * Whether this brush places a shape rather than reworking existing terrain. Only these get
+     * the optional smoothing pass afterwards -- smoothing the output of a smooth brush is not a
+     * meaningful thing to offer.
+     */
+    private final boolean placement;
+
+    SculptorBrush(String label, String secondaryLabel, int secondaryMin, int secondaryMax, boolean usesStrength,
+        boolean placement) {
         this.label = label;
         this.secondaryLabel = secondaryLabel;
         this.secondaryMin = secondaryMin;
         this.secondaryMax = secondaryMax;
         this.usesStrength = usesStrength;
+        this.placement = placement;
     }
 
     public String label() {
         return label;
     }
 
-    /** Whether this brush has a second integer parameter, and what to call it. */
     public boolean hasSecondary() {
         return secondaryLabel != null;
     }
@@ -103,52 +85,79 @@ public enum SculptorBrush {
         return secondaryMax;
     }
 
-    /** Whether a strength control is meaningful for this brush. */
     public boolean usesStrength() {
         return usesStrength;
     }
 
-    private Brush create(int secondary, double strength) {
-        switch (this) {
-            case HOLLOW_SPHERE:
-                return new HollowSphereBrush();
-            case CYLINDER:
-                return new CylinderBrush(secondary);
-            case HOLLOW_CYLINDER:
-                return new HollowCylinderBrush(secondary);
-            case SMOOTH:
-                return new SmoothBrush(secondary);
-            case GRAVITY:
-                return new GravityBrush(false);
-            case RAISE:
-                return new TerrainBrushes.RaiseLower(1, strength);
-            case LOWER:
-                return new TerrainBrushes.RaiseLower(-1, strength);
-            case FLATTEN:
-                return new TerrainBrushes.Flatten(strength);
-            case ERODE:
-                return new TerrainBrushes.Erode(false, strength);
-            case MELT:
-                return new TerrainBrushes.Erode(true, strength);
-            case SPHERE:
-            default:
-                return new SphereBrush();
-        }
+    public boolean isPlacement() {
+        return placement;
     }
 
     /**
-     * Run this brush against a session.
+     * Run this brush.
      *
-     * @param session   the session to write to -- a preview session captures, a normal one applies
-     * @param position  the centre of the brush
-     * @param radius    the brush radius
-     * @param material  the block to build with; shape-only brushes such as {@link #SMOOTH} ignore it
-     * @param secondary the brush's second parameter, if it has one
-     * @param strength  0..1, how forcefully a terrain brush acts
+     * @param ctx    preview or commit backing -- the brush does not know which
+     * @param centre where the crosshair is pointing
      */
-    public void apply(EditSession session, Vector position, int radius, BaseBlock material, int secondary,
-        double strength) throws MaxChangedBlocksException {
-        create(secondary, strength).build(session, position, new BlockPattern(new BaseBlock(material)), radius);
+    public void apply(SculptorEditContext ctx, Vector centre, BrushParams params) throws MaxChangedBlocksException {
+        ctx.setMaterial(params.material);
+
+        switch (this) {
+            case SPHERE:
+                Brushes.sphere(ctx, centre, params, false);
+                break;
+            case HOLLOW_SPHERE:
+                Brushes.sphere(ctx, centre, params, true);
+                break;
+            case CYLINDER:
+                Brushes.cylinder(ctx, centre, params, false);
+                break;
+            case HOLLOW_CYLINDER:
+                Brushes.cylinder(ctx, centre, params, true);
+                break;
+            case SMOOTH:
+                Brushes.smooth(ctx, centre, params, params.secondary);
+                break;
+            case GRAVITY:
+                Brushes.gravity(ctx, centre, params);
+                break;
+            case RAISE:
+                Brushes.raiseLower(ctx, centre, params, 1);
+                break;
+            case LOWER:
+                Brushes.raiseLower(ctx, centre, params, -1);
+                break;
+            case FLATTEN:
+                Brushes.flatten(ctx, centre, params);
+                break;
+            case ERODE:
+                Brushes.erode(ctx, centre, params, false);
+                break;
+            case MELT:
+                Brushes.erode(ctx, centre, params, true);
+                break;
+            case REMOVE_FOLIAGE:
+                Brushes.removeFoliage(ctx, centre, params);
+                break;
+            default:
+                break;
+        }
+
+        if (placement && params.autoSmooth > 0.0D) {
+            // Runs through the same context, so in commit mode it lands in the same undo entry
+            // and in preview mode the ghost already shows the smoothed result.
+            //
+            // A wider radius than the placement itself, so the new shape is blended into the
+            // ground around it rather than having its own edge smoothed in isolation.
+            BrushParams smoothing = new BrushParams(
+                params.radius + 2,
+                params.material,
+                params.secondary,
+                params.autoSmooth,
+                0.0D,
+                params.useSelectedMaterial);
+            Brushes.smooth(ctx, centre, smoothing, 2);
+        }
     }
 
     public SculptorBrush next() {
