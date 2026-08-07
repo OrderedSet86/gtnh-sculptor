@@ -52,7 +52,7 @@ import com.gtnh.sculptor.camera.CameraSettings.PathSpeed;
 public class SculptorPanel extends CustomModularScreen {
 
     private static final int PANEL_WIDTH = 320;
-    private static final int PANEL_HEIGHT = 200;
+    private static final int PANEL_HEIGHT = 268;
     private static final int ROW_HEIGHT = 18;
 
     private static final int LEFT_X = 8;
@@ -185,6 +185,53 @@ public class SculptorPanel extends CustomModularScreen {
                     takeHeldBlock(settings);
                     return true;
                 }));
+        y += 22;
+
+        // --- What placement brushes may write over -------------------------------------
+        panel.child(
+            new ButtonWidget<>().overlay(
+                IKey.dynamic(
+                    () -> settings.getPlacementMask()
+                        .label()))
+                .size(COLUMN_WIDTH, 16)
+                .left(LEFT_X)
+                .top(y)
+                .onMousePressed(button -> {
+                    settings.setPlacementMask(
+                        settings.getPlacementMask()
+                            .next());
+                    return true;
+                }));
+        y += 22;
+
+        // --- Build with the selected block rather than the existing surface -------------
+        panel.child(
+            new ButtonWidget<>().overlay(
+                IKey.dynamic(
+                    () -> settings.isUseSelectedMaterial() ? "Material: selected block" : "Material: keep existing"))
+                .size(COLUMN_WIDTH, 16)
+                .left(LEFT_X)
+                .top(y)
+                .onMousePressed(button -> {
+                    settings.setUseSelectedMaterial(!settings.isUseSelectedMaterial());
+                    return true;
+                }));
+        y += 22;
+
+        // --- Smoothing applied after a placement brush ---------------------------------
+        panel.child(
+            dynamicLabel(
+                () -> (settings.getAutoSmooth() <= 0.0D) ? "Auto-smooth: off"
+                    : String.format("Auto-smooth: %.0f%%", settings.getAutoSmooth() * 100.0D),
+                LEFT_X,
+                y));
+        y += 12;
+        panel.child(
+            new SliderWidget().bounds(0.0D, 1.0D)
+                .value(new DoubleValue.Dynamic(settings::getAutoSmooth, settings::setAutoSmooth))
+                .size(COLUMN_WIDTH, 14)
+                .left(LEFT_X)
+                .top(y));
     }
 
     private void buildCameraColumn(ModularPanel panel, CameraSettings settings) {

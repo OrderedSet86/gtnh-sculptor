@@ -1,18 +1,18 @@
 [{
     "modid": "${modId}",
     "name": "${modName}",
-    "description": "An interactive creative world editor: brushes with live preview, an in-game editor panel, and a cinematic camera. Contains and replaces WorldEdit - do not install both.",
+    "description": "An interactive creative world editor: brushes with live preview, an in-game editor panel, and a cinematic camera. An addon to WorldEdit - install alongside it, not instead of it.",
     "version": "${modVersion}",
     "mcversion": "${minecraftVersion}",
     "url": "https://github.com/OrderedSet86/gtnh-sculptor",
     "updateUrl": "",
     "authors": [ "OrderedSet86", "sk89q", "wizjany", "TomyLobo" ],
-    "credits": "Built on WorldEdit by sk89q and contributors (LGPL-3). Rendering via GTNHLib and Angelica; UI via ModularUI2.",
+    "credits": "Uses WorldEdit by sk89q and contributors (LGPL-3) as its edit engine. Rendering via GTNHLib and Angelica; UI via ModularUI2.",
     "logoFile": "",
     "screenshots": [],
-    "requiredMods": [],
+    "requiredMods": [ "worldedit" ],
     "dependencies": [
-        "ForgeMultipart"
+        "worldedit"
     ],
     "dependants": []
 }]

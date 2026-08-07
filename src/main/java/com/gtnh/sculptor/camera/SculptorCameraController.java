@@ -22,6 +22,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.settings.KeyBinding;
+import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovementInput;
@@ -55,29 +56,36 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  */
 public class SculptorCameraController {
 
-    private static final KeyBinding TOGGLE_KEY = new KeyBinding(
-        "Sculptor: toggle free camera",
-        Keyboard.KEY_C,
-        "Sculptor");
+    /**
+     * Key descriptions must not contain a colon.
+     *
+     * <p>
+     * {@code GameSettings} persists bindings as {@code key_<description>:<code>} and parses them
+     * back with {@code split(":")}, comparing only the first field. A description like
+     * "Sculptor: play camera path" splits in the wrong place, matches nothing on load, and the
+     * rebind is silently discarded and then overwritten on the next save.
+     * </p>
+     */
+    private static final String CATEGORY = "key.categories.sculptor";
+
+    private static final KeyBinding TOGGLE_KEY = new KeyBinding("key.sculptor.camera.toggle", Keyboard.KEY_C, CATEGORY);
     private static final KeyBinding ADD_SLOW_KEY = new KeyBinding(
-        "Sculptor: add keyframe (slow approach)",
+        "key.sculptor.camera.keyframe.slow",
         Keyboard.KEY_J,
-        "Sculptor");
+        CATEGORY);
     private static final KeyBinding ADD_NORMAL_KEY = new KeyBinding(
-        "Sculptor: add keyframe (normal approach)",
+        "key.sculptor.camera.keyframe.normal",
         Keyboard.KEY_K,
-        "Sculptor");
+        CATEGORY);
     private static final KeyBinding ADD_FAST_KEY = new KeyBinding(
-        "Sculptor: add keyframe (fast approach)",
+        "key.sculptor.camera.keyframe.fast",
         Keyboard.KEY_M,
-        "Sculptor");
-    private static final KeyBinding PLAY_KEY = new KeyBinding("Sculptor: play camera path", Keyboard.KEY_P, "Sculptor");
-    // Not L: WorldEdit already binds that to its reference GUI, and a shared binding would
-    // silently fire both.
+        CATEGORY);
+    private static final KeyBinding PLAY_KEY = new KeyBinding("key.sculptor.camera.play", Keyboard.KEY_P, CATEGORY);
     private static final KeyBinding CLEAR_KEY = new KeyBinding(
-        "Sculptor: clear camera path",
+        "key.sculptor.camera.clear",
         Keyboard.KEY_DELETE,
-        "Sculptor");
+        CATEGORY);
 
     private static final int TICKS_PER_SECOND = 20;
 
@@ -154,10 +162,12 @@ public class SculptorCameraController {
     private void attach(Minecraft mc) {
         EntityClientPlayerMP player = mc.thePlayer;
 
+        // posY is already the eye anchor for a player in 1.7.10 -- the bounding box hangs
+        // below it by yOffset -- so adding eye height again would start the camera high.
         camera = new SculptorCamera(
             mc.theWorld,
             player.posX,
-            player.posY + player.getEyeHeight(),
+            player.posY,
             player.posZ,
             player.rotationYaw,
             player.rotationPitch);
@@ -291,10 +301,43 @@ public class SculptorCameraController {
         // Keep the player pinned while the camera is out, so physics does not drift it.
         mc.thePlayer.motionX = mc.thePlayer.motionY = mc.thePlayer.motionZ = 0.0D;
 
+        syncViewState(mc);
+
         if (playing) {
             advancePlayback(mc);
         } else {
             applyFreeMovement(mc);
+        }
+    }
+
+    /**
+     * Copy the player's potion effects and creative flag onto the camera each tick.
+     *
+     * <p>
+     * Plenty of the render path is keyed on {@code renderViewEntity} rather than the player:
+     * {@code updateFogColor} gates night vision on it, so fog and sky stay dark without this;
+     * {@code setupFog} reads {@code capabilities.isCreativeMode} off it, so void fog appears for
+     * a creative player; and Angelica's Iris {@code CommonUniforms} reads it to drive the
+     * shader's night-vision uniform, which is where the effect is most visibly lost.
+     * </p>
+     *
+     * <p>
+     * This resyncs every tick rather than copying once on attach, for three reasons. The camera
+     * is never added to the world and never ticked, so durations would freeze -- and night
+     * vision flickers below 200 ticks remaining, so a frozen duration either flickers forever or
+     * never does. {@code addPotionEffect} combines with an existing effect rather than replacing
+     * it, so re-adding without clearing would inflate amplifiers. And {@code updateFogColor}
+     * gates on the camera but then calls {@code getNightVisionBrightness(mc.thePlayer, ...)},
+     * which dereferences the player's effect unguarded -- camera-has-it while player-does-not is
+     * a hard crash in the render loop, which resyncing from the player makes impossible.
+     * </p>
+     */
+    private void syncViewState(Minecraft mc) {
+        camera.capabilities.isCreativeMode = mc.thePlayer.capabilities.isCreativeMode;
+
+        camera.clearActivePotions();
+        for (Object effect : mc.thePlayer.getActivePotionEffects()) {
+            camera.addPotionEffect(new PotionEffect((PotionEffect) effect));
         }
     }
 

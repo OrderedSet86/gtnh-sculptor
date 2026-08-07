@@ -48,7 +48,13 @@ public class SculptorCamera extends EntityPlayer {
         this.noClip = true;
         this.isImmuneToFire = true;
         this.setSize(0.1F, 0.1F);
-        this.yOffset = 0.0F;
+
+        // Must match a player's 1.62. EntityRenderer.orientCamera positions the view at
+        // posY - (yOffset - 1.62F), while rayTrace starts from raw posY with no such
+        // compensation. Any other value silently desyncs what you see from what you target:
+        // with yOffset 0 the view sits 1.62 above where the ray begins, so blocks break one
+        // to two below the crosshair.
+        this.yOffset = 1.62F;
 
         setPositionAndRotationDirect(x, y, z, yaw, pitch);
     }
@@ -88,12 +94,6 @@ public class SculptorCamera extends EntityPlayer {
         this.rotationYaw = yaw;
         this.rotationPitch = pitch;
         this.setPosition(x, y, z);
-    }
-
-    @Override
-    public float getEyeHeight() {
-        // The camera is the eye; there is no body under it to offset from.
-        return 0.0F;
     }
 
     @Override

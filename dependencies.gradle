@@ -34,33 +34,31 @@
  * For more details, see https://docs.gradle.org/8.0.1/userguide/java_library_plugin.html#sec:java_library_configurations_graph
  */
 dependencies {
-    implementation 'de.schlichtherle:truezip:6.8.3'
-    implementation 'rhino:js:1.7R2'
-    implementation 'org.yaml:snakeyaml:1.9'
-    implementation 'com.google.guava:guava:17.0'
-    implementation 'com.google.code.findbugs:jsr305:1.3.9'
-    implementation 'com.google.code.gson:gson:2.2.4'
-	implementation("com.github.GTNewHorizons:CodeChickenCore:1.4.7:dev")
+    // WorldEdit supplies the edit engine: EditSession, selections, history, masks, patterns.
+    // Sculptor is an addon and does not vendor it -- so a server can run the real WorldEdit,
+    // with all its commands and workflows untouched, and drop Sculptor in alongside.
+    // Required at runtime, not optional: Sculptor has no edit engine of its own.
+    devOnlyNonPublishable 'com.github.GTNewHorizons:worldedit-gtnh:0.0.10:dev'
+    runtimeOnlyNonPublishable 'com.github.GTNewHorizons:worldedit-gtnh:0.0.10:dev'
+    // devOnlyNonPublishable is compileOnly, which does not reach the test classpath, and the
+    // preview-vs-commit tests need EditSession and World.
+    testImplementation 'com.github.GTNewHorizons:worldedit-gtnh:0.0.10:dev'
 
-    shadowImplementation 'com.sk89q:jchronic:0.2.4a'
-    shadowImplementation 'com.thoughtworks.paranamer:paranamer:2.6'
-    shadowImplementation 'com.sk89q.lib:jlibnoise:1.0.0'
-
-    devOnlyNonPublishable 'com.github.GTNewHorizons:ArchitectureCraft:1.12.8:dev'
-    devOnlyNonPublishable 'com.github.GTNewHorizons:ForgeMultipart:1.6.8:dev'
-    devOnlyNonPublishable 'com.github.GTNewHorizons:CarpentersBlocks:3.7.1-GTNH:dev'
-
-    runtimeOnlyNonPublishable 'com.github.GTNewHorizons:NotEnoughItems:2.8.72-GTNH:dev'
-
-    // Sculptor: client-side editor. GTNHLib supplies the off-thread tessellation and the
-    // VBO/VAO/shader plumbing the ghost renderer is built on (TessellatorManager,
-    // IVertexArrayObject, ShaderProgram). Angelica is present so we render correctly under
-    // its GL 3.3 core profile; we draw from RenderWorldLastEvent and must not touch the
-    // terrain renderer it @Overwrites.
+    // GTNHLib supplies the off-thread tessellation and the VBO/VAO/shader plumbing the ghost
+    // renderer is built on (TessellatorManager, IVertexArrayObject). ModularUI2 is the editor
+    // panel. Angelica is present so we render correctly under its GL 3.3 core profile; we draw
+    // from RenderWorldLastEvent and must not touch the terrain renderer it @Overwrites.
     implementation 'com.github.GTNewHorizons:GTNHLib:0.11.21:dev'
     implementation 'com.github.GTNewHorizons:ModularUI2:2.3.79-1.7.10:dev'
     compileOnly('com.github.GTNewHorizons:Angelica:2.1.54:dev') { transitive = false }
     runtimeOnlyNonPublishable 'com.github.GTNewHorizons:Angelica:2.1.54:dev'
 
+    // NEI is not required, but it is what the block picker integrates with and it is present in
+    // any realistic GTNH install, so run against it.
+    runtimeOnlyNonPublishable 'com.github.GTNewHorizons:NotEnoughItems:2.8.72-GTNH:dev'
+
+    testImplementation 'junit:junit:4.13.2'
+    // Lets the commit path be tested against a stand-in EditSession, so preview-vs-commit
+    // equivalence can be checked without booting a WorldEdit platform.
     testImplementation 'org.mockito:mockito-core:5.4.0'
 }

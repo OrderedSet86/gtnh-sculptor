@@ -9,19 +9,20 @@ command and hope. Sculptor adds the layer that modern creative-building tools ha
 - **Brushes with live preview** — see the result as a translucent ghost before you commit.
 - **Terrain brushes with falloff** — raise, lower, flatten, erode, melt, tapering from the
   centre of the stroke so it blends into surrounding ground instead of stamping a shape.
+- **Trees and clearing** — plant the biome's own tree species, or strip foliage and trunks.
 - **An in-game editor panel** — brush picker, radius/strength sliders, material picker.
 - **A cinematic camera** — free camera decoupled from the player, with keyframed paths.
 
 ## Installing
 
-> **Sculptor replaces WorldEdit. Do not install both.**
-> It vendors WorldEdit and registers the same commands, so running them together will
-> collide. Remove `worldedit-*.jar` from `mods/` first.
+> **Sculptor requires WorldEdit and installs alongside it.** Keep `worldedit-*.jar` where it
+> is — Sculptor will not load without it, and registers no `//` commands of its own beyond
+> its two undo commands.
 
-Drop the jar in `mods/`. It is a universal Forge mod — the same file goes on the client
-and on the server, and both need it for the editor to work in multiplayer.
+Drop the jar in `mods/`. It is a universal Forge mod — the same file goes on the client and on
+the server, and both need it for the editor to work in multiplayer.
 
-Requires **GTNHLib**, **ModularUI2**, and **UniMixins**. **Angelica** is optional but is
+Requires **worldedit-gtnh**, **GTNHLib** and **ModularUI2**. **Angelica** is optional but is
 what the ghost renderer is designed against.
 
 On a server, applying a brush requires permission. With no permissions mod installed that
@@ -43,25 +44,35 @@ Everything is rebindable under **Options → Controls → Sculptor**.
 | `P` | Play or stop the camera path |
 | `Del` | Clear the camera path |
 
+Undo is a command rather than a key, since it is destructive and a key that far-reaching is too
+easy to hit mid-stroke:
+
+| Command | |
+|---|---|
+| `//sc-undo` | Undo your last Sculptor edit |
+| `//sc-redo` | Redo the edit you undid |
+
+These are separate from WorldEdit's `//undo`, which walks your command history and will not
+revert a brush stroke — and Sculptor's will not revert a `//` command.
+
 A keyframe's tier sets the speed of the move *into* it, and a segment takes as long as its
 length needs at that speed — so a long establishing move and a short detail move read as
 the same camera. Speeds are editable, in blocks/sec, in the panel.
 
 ## How the preview works
 
-`EditSession` builds a chain of `Extent` decorators whose root is the thing that actually
-writes blocks. Sculptor adds a preview mode that swaps that root for a `PreviewExtent`,
-which captures changes instead of applying them. Every other stage of the pipeline is
-untouched, so **every brush and shape operation gains a preview for free** — they never
-learn they are not writing to the world.
+Every brush reads and writes through a `SculptorEditContext`. In preview mode that is backed by
+a capture buffer and nothing reaches the world; on commit it wraps a real `EditSession`. The
+brush cannot tell which, so the ghost and the result are produced by the same execution rather
+than by two code paths that have to agree.
 
-The capture is read-your-writes, which matters more than it sounds: brushes like smooth,
-gravity and erode read back positions they have just written, and would otherwise preview
-differently from how they commit.
+The buffer is read-your-writes, which matters more than it sounds: smooth, gravity, erode and
+the raise/lower family all read back positions they have just written, and would otherwise
+preview differently from how they commit.
 
-Committing goes through the server even in singleplayer, because the integrated server owns
-the blocks. The client sends which brush it used and where; the server replays it against a
-real `EditSession` bound to the player's session, which is what makes `//undo` work.
+Committing goes through the server even in singleplayer, because the integrated server owns the
+blocks. The client sends which brush it used and how it was configured; the server replays it
+against a real `EditSession` and records it in Sculptor's own history.
 
 ## Building
 
@@ -96,10 +107,12 @@ brushes, multiplayer commit with permission checks.
 Known gaps:
 
 - The editor panel is a modal screen rather than a docked, non-modal one.
+- Only Sculptor's brushes preview. WorldEdit commands such as `//set` do not, since Sculptor no
+  longer modifies `EditSession`.
 - Erode and melt are `O(radius³)`; large radii may be slow.
 - Preview at long range can be stale where chunks are not loaded client-side.
 - Blueprints are not implemented.
 
 ## License
 
-LGPL-3.0, as required by the vendored WorldEdit. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+LGPL-3.0, matching WorldEdit, which it builds on. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

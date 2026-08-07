@@ -341,6 +341,14 @@ public class GhostRenderer {
             GL11.glDisable(GL11.GL_ALPHA_TEST);
             GL11.glDepthMask(false);
 
+            // A ghost block sits exactly on the face of the real block it covers, and two
+            // coplanar surfaces at equal depth shimmer as the rasteriser picks between them per
+            // pixel. Bias the ghost toward the viewer in depth only -- unlike inflating the mesh,
+            // this fixes the fighting without distorting the geometry or leaving seams where two
+            // inflated blocks meet.
+            GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
+            GL11.glPolygonOffset(-1.0f, -1.0f);
+
             if (depthTest) {
                 GL11.glEnable(GL11.GL_DEPTH_TEST);
             } else {
@@ -359,6 +367,8 @@ public class GhostRenderer {
                 removalMesh.render();
             }
         } finally {
+            GL11.glPolygonOffset(0.0f, 0.0f);
+            GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
             GL11.glDepthMask(true);
             GL11.glPopAttrib();
             GL11.glPopMatrix();
