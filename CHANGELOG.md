@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1
+
+**No changes to the mod.** The jar behaves exactly as 0.3.0 does; there is no reason to
+update if you already have it.
+
+Release notes are now assembled from this file instead of from a here-doc buried in the
+release workflow, and a release whose version has no section here fails rather than
+publishing an empty body. This release exists to exercise that.
+
+
 ## 0.3.0
 
 **Breaking: the undo commands are now `/scu` and `/scr`.** `//sc-undo` and `/sc-undo` no
