@@ -163,35 +163,37 @@ public final class Brushes {
                 int surface = terrainSurfaceY(ctx, x, z, cy + r + 1, cy - r - 1);
                 if (surface == Integer.MIN_VALUE) continue;
 
-                if (sign > 0) {
-                    raiseColumn(ctx, params, x, z, surface, amount);
-                } else {
-                    for (int i = 0; i < amount; i++) {
-                        int y = surface - i;
-                        if (y < 0) break;
-                        ctx.setAir(x, y, z);
-                    }
-                }
+                reshapeColumn(ctx, params, x, z, surface, surface + sign * amount);
             }
         }
     }
 
     /**
-     * Extend a column upward, keeping its surface block on top.
+     * Move a column's surface to a new height, keeping its skin on top.
      *
      * <p>
-     * Naively copying the surface block upward turns a grassy hill into a solid block of grass.
-     * Real ground has a skin over a filler, so the old surface is buried as filler and the
-     * surface block is re-laid on the new top. The filler is whatever was directly beneath --
-     * dirt under grass, sand under sand -- so this works for any material without a lookup
-     * table, modded ones included.
+     * Terrain has a surface block over a filler -- grass over dirt, and the same shape for sand,
+     * podzol, mycelium or anything a mod adds. Both directions have to preserve that. Raising by
+     * copying the surface block upward produces a solid block of grass; lowering by simply
+     * cutting exposes the filler and leaves bare dirt on top. Either way the result stops
+     * looking like ground.
+     * </p>
+     *
+     * <p>
+     * So: the surface block is lifted to whatever the new top is, and everything below it is
+     * filler taken from directly beneath the old surface. No block-id table, so it works for
+     * modded terrain as well as vanilla.
      * </p>
      */
-    private static void raiseColumn(SculptorEditContext ctx, BrushParams params, int x, int z, int surface, int amount)
-        throws MaxChangedBlocksException {
-        BaseBlock top = params.useSelectedMaterial ? params.material : ctx.getBlock(new Vector(x, surface, z));
+    private static void reshapeColumn(SculptorEditContext ctx, BrushParams params, int x, int z, int surface,
+        int desired) throws MaxChangedBlocksException {
+        if (desired == surface) return;
 
-        BaseBlock filler = top;
+        int newTop = Math.max(0, Math.min(255, desired));
+
+        BaseBlock skin = params.useSelectedMaterial ? params.material : ctx.getBlock(new Vector(x, surface, z));
+
+        BaseBlock filler = skin;
         if (!params.useSelectedMaterial && surface > 0) {
             BaseBlock below = ctx.getBlock(new Vector(x, surface - 1, z));
             if (below.getType() != BlockID.AIR && !isFoliage(below)) {
@@ -199,15 +201,18 @@ public final class Brushes {
             }
         }
 
-        // Everything from the old surface up to just below the new top becomes filler; the old
-        // surface block is now buried and should not stay a surface block.
-        for (int y = surface; y < surface + amount; y++) {
-            if (y > 255) break;
-            ctx.setBlock(x, y, z, filler);
+        if (newTop > surface) {
+            // The old surface block is now buried, so it becomes filler like everything under it.
+            for (int y = surface; y < newTop; y++) {
+                ctx.setBlock(x, y, z, filler);
+            }
+        } else {
+            for (int y = surface; y > newTop; y--) {
+                ctx.setAir(x, y, z);
+            }
         }
 
-        int newTop = Math.min(255, surface + amount);
-        ctx.setBlock(x, newTop, z, top);
+        ctx.setBlock(x, newTop, z, skin);
     }
 
     /**
@@ -233,7 +238,7 @@ public final class Brushes {
                 // Move only part of the way, scaled by falloff, so the brush edge blends
                 // instead of leaving a cliff.
                 int desired = (int) Math.round(surface + (targetY - surface) * weight * params.strength);
-                moveColumnTo(ctx, params, x, z, surface, desired);
+                reshapeColumn(ctx, params, x, z, surface, desired);
             }
         }
     }
@@ -297,7 +302,7 @@ public final class Brushes {
                 // falloff is smallest, so damping by it shrinks a genuine one-block correction
                 // to a fraction and rounding then discards it entirely.
                 int desired = (int) Math.round(surface + (smoothed - surface) * params.strength);
-                moveColumnTo(ctx, params, cx + dx, cz + dz, surface, desired);
+                reshapeColumn(ctx, params, cx + dx, cz + dz, surface, desired);
             }
         }
     }
@@ -318,25 +323,6 @@ public final class Brushes {
             }
         }
         return (count == 0) ? Double.NaN : sum / count;
-    }
-
-    /** Raise or cut a single column from its current surface to a target height. */
-    private static void moveColumnTo(SculptorEditContext ctx, BrushParams params, int x, int z, int surface,
-        int desired) throws MaxChangedBlocksException {
-        if (desired == surface) return;
-
-        if (desired < surface) {
-            for (int y = surface; y > desired; y--) {
-                if (y < 0) break;
-                ctx.setAir(x, y, z);
-            }
-        } else {
-            BaseBlock fill = surfaceMaterial(ctx, params, x, surface, z);
-            for (int y = surface + 1; y <= desired; y++) {
-                if (y > 255) break;
-                ctx.setBlock(x, y, z, fill);
-            }
-        }
     }
 
     /**

@@ -152,4 +152,69 @@ public class BrushBehaviourTest {
         assertTrue("smoothing should reach beyond the brush radius, got " + furthest, furthest > radius);
     }
 
+    /**
+     * Lowering must re-lay the surface block, not just cut the column away.
+     *
+     * <p>
+     * Simply removing blocks exposes the filler underneath, leaving bare dirt on top of every
+     * column the brush touched -- which is what a terraced, dirt-capped hillside looks like.
+     * </p>
+     */
+    @Test
+    public void lowerLeavesTheSurfaceBlockOnTopNotExposedFiller() throws Exception {
+        SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
+        SculptorBrush.LOWER.apply(ctx, new Vector(0, SURFACE_Y, 0), params(4, 1.0D));
+
+        Map<BlockVector, BaseBlock> changes = ctx.getPendingChanges();
+        assertTrue("lower should have changed something", !changes.isEmpty());
+
+        // Walk each touched column down to its new top and check what is capping it.
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                int x = dx;
+                int z = dz;
+                int top = Integer.MIN_VALUE;
+                for (int y = SURFACE_Y; y >= SURFACE_Y - 8; y--) {
+                    if (!ctx.isAir(new Vector(x, y, z))) {
+                        top = y;
+                        break;
+                    }
+                }
+                if (top == Integer.MIN_VALUE || top == SURFACE_Y) continue;
+
+                assertEquals(
+                    "column (" + x + "," + z + ") should be capped with the surface block",
+                    BlockID.GRASS,
+                    ctx.getBlock(new Vector(x, top, z))
+                        .getType());
+            }
+        }
+    }
+
+    /**
+     * A grass block that ends up buried must not stay grass.
+     */
+    @Test
+    public void raiseDoesNotLeaveGrassBuriedUnderTheNewSurface() throws Exception {
+        SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
+        SculptorBrush.RAISE.apply(ctx, new Vector(0, SURFACE_Y, 0), params(4, 1.0D));
+
+        int top = Integer.MIN_VALUE;
+        for (int y = SURFACE_Y + 8; y >= SURFACE_Y; y--) {
+            if (!ctx.isAir(new Vector(0, y, 0))) {
+                top = y;
+                break;
+            }
+        }
+        assertTrue("centre column should have risen", top > SURFACE_Y);
+
+        for (int y = SURFACE_Y; y < top; y++) {
+            assertEquals(
+                "buried block at y=" + y + " must not be grass",
+                BlockID.DIRT,
+                ctx.getBlock(new Vector(0, y, 0))
+                    .getType());
+        }
+    }
+
 }
