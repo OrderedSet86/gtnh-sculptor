@@ -355,7 +355,7 @@ public final class Brushes {
                 // anchor at all and is left as the flat slab it was drawn as. A neighbouring
                 // column whose own material already stood as high as this one's underside is
                 // holding it up just as surely as ground would.
-                if (onGround[index] || touchesSolidBeside(groundBefore, reach, dx, dz, bottom)) {
+                if (onGround[index] || touchesSolidBeside(groundBefore, reach, dx, dz, bottom, top - bottom + 1)) {
                     fromAnchor[index] = 0;
                     frontier.add(index);
                 }
@@ -446,8 +446,16 @@ public final class Brushes {
      * columns just outside the footprint are available to ask about.
      * </p>
      */
-    private static boolean touchesSolidBeside(int[] groundBefore, int reach, int dx, int dz, int bottom) {
+    private static boolean touchesSolidBeside(int[] groundBefore, int reach, int dx, int dz, int bottom,
+        int withinBelow) {
         int reachWidth = 2 * reach + 1;
+
+        // Support does not have to come up to the underside to count. A shape placed at a cliff
+        // edge commonly stands a block or two proud of the top it springs from, and demanding
+        // that the neighbour reach the underside exactly makes the whole pass switch off over a
+        // difference nobody can see. What matters is that the support is close enough that the
+        // curve could reach down to it, which is the same distance the sweep itself is allowed.
+        int lowest = bottom - withinBelow;
 
         for (int side = 0; side < 4; side++) {
             int nx = dx + ((side == 0) ? 1 : (side == 1) ? -1 : 0);
@@ -455,7 +463,7 @@ public final class Brushes {
             if (nx < -reach || nz < -reach || nx > reach || nz > reach) continue;
 
             int neighbour = groundBefore[(nz + reach) * reachWidth + (nx + reach)];
-            if (neighbour != Integer.MIN_VALUE && neighbour >= bottom) return true;
+            if (neighbour != Integer.MIN_VALUE && neighbour >= lowest) return true;
         }
         return false;
     }

@@ -265,10 +265,16 @@ public class OverhangModeTest {
     /** A tower standing beside the shape rather than under it -- how an arch is built. */
     private static class TowerWorld extends NullWorld {
 
+        private final int towerTop;
+
+        TowerWorld(int towerTop) {
+            this.towerTop = towerTop;
+        }
+
         @Override
         public BaseBlock getBlock(Vector position) {
             int y = position.getBlockY();
-            if (position.getBlockX() <= 0 && y <= CENTRE_Y + 50) return new BaseBlock(BlockID.STONE);
+            if (position.getBlockX() <= 0 && y <= towerTop) return new BaseBlock(BlockID.STONE);
             return new BaseBlock(y <= CENTRE_Y - 90 ? BlockID.STONE : BlockID.AIR);
         }
 
@@ -279,7 +285,11 @@ public class OverhangModeTest {
     }
 
     private static SculptorEditContext spanFromTower(int centreX) throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(new TowerWorld());
+        return spanFromTower(centreX, CENTRE_Y + 50);
+    }
+
+    private static SculptorEditContext spanFromTower(int centreX, int towerTop) throws Exception {
+        SculptorEditContext ctx = SculptorEditContext.preview(new TowerWorld(towerTop));
         SculptorBrush.CYLINDER.apply(
             ctx,
             new Vector(centreX, CENTRE_Y, 0),
@@ -315,6 +325,48 @@ public class OverhangModeTest {
             if (bottom == Integer.MIN_VALUE) continue;
             assertEquals("a span touching nothing should keep the shape it was drawn with", CENTRE_Y, bottom);
         }
+    }
+
+    /**
+     * How far the underside was drawn down below the shape's base.
+     *
+     * <p>
+     * Only columns the shape actually stands in are counted. Scanning wider picks up untouched
+     * valley floor, which is solid to bedrock and reports as a hundred-block sweep.
+     * </p>
+     */
+    private static int sweepDepth(SculptorEditContext ctx) {
+        int deepest = CENTRE_Y;
+        for (int dx = 1; dx <= 2 * RADIUS + 1; dx++) {
+            if (topOf(ctx, dx, 0) < CENTRE_Y) continue;
+
+            int bottom = bottomOf(ctx, dx, 0);
+            if (bottom != Integer.MIN_VALUE) deepest = Math.min(deepest, bottom);
+        }
+        return CENTRE_Y - deepest;
+    }
+
+    /**
+     * Support beside the shape counts even when it does not come all the way up to the underside.
+     *
+     * <p>
+     * A shape placed at a cliff edge commonly stands a block or two proud of the top it springs
+     * from. Requiring the neighbour to reach the underside exactly meant the entire pass switched
+     * off over a difference nobody can see, which is what left a span looking untouched. The
+     * support has to be near enough that the curve could reach it, and "near enough" is the same
+     * distance the sweep is allowed: the shape's own height.
+     * </p>
+     */
+    @Test
+    public void supportBesideTheShapeCountsEvenWhenTheShapeStandsProudOfIt() throws Exception {
+        for (int proud = 0; proud < HEIGHT; proud++) {
+            int depth = sweepDepth(spanFromTower(RADIUS + 1, CENTRE_Y - proud));
+            assertTrue("standing " + proud + " blocks proud of its support, the underside was left flat", depth > 0);
+        }
+
+        // Far enough below and there is nothing to blend into: left exactly as drawn.
+        int wayBelow = sweepDepth(spanFromTower(RADIUS + 1, CENTRE_Y - 4 * HEIGHT));
+        assertEquals("support far below should not drag the underside down to it", 0, wayBelow);
     }
 
     /**

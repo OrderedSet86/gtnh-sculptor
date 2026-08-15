@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 41 tests green.
+Current state: **0.4.0 in progress** on `main`, 42 tests green.
 
 ---
 
@@ -130,8 +130,19 @@ below", a horizontal span found no anchor anywhere and the whole pass bailed, le
 it was drawn as — and no amount of tuning the curve mattered, because it never ran.
 `touchesSolidBeside` reads the pre-stroke heights of the four neighbouring columns, which is why
 `groundBefore` is sampled over the wider `reach` disc: the columns just outside the footprint have
-to be available to ask about. It must compare against the shape's underside, not merely check that
-something is there, or a span two blocks clear of a tower anchors to ground ninety blocks below.
+to be available to ask about.
+
+The tolerance on that test is the fiddly part, and both ends of it are wrong:
+
+- Demanding the neighbour reach the underside **exactly** switches the whole pass off over a
+  difference nobody can see. A shape placed at a cliff edge normally stands a block or two proud of
+  the top it springs from, so this reads as "no support" for the commonest placement there is, and
+  a span looks completely untouched.
+- Accepting support at **any** depth anchors a shape to ground ninety blocks below and drags the
+  underside down to it.
+
+So it is bounded by the same distance the sweep itself is allowed — the shape's own height. Support
+near enough for the curve to reach counts; support further away does not.
 
 The sweep is also bounded to about the shape's own height. Following the ground however far away it
 is turns a soffit into a curtain wall — eighty blocks, measured, for a ten-block cylinder spanning
