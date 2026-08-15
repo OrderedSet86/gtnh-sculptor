@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 35 tests green.
+Current state: **0.4.0 in progress** on `main`, 38 tests green.
 
 ---
 
@@ -104,6 +104,18 @@ A cylinder aimed at a slope fills upward across its whole disc, so its downhill 
 gap — and no amount of smoothing touches that gap, because nothing in a height map is about the
 underside. `Brushes.settleOntoGround` extends the solid shapes down onto the ground before the
 smoothing pass runs, gated on the auto-smooth slider so a plain cylinder stays a true cylinder.
+
+There are two reasonable answers, and `OverhangMode` picks between them. `settleOntoGround` fills
+to the terrain; `cantileverOntoGround` leaves it hanging and rounds the underside into the slope.
+Note the second does **not** use the box blur the rest of the smoothing uses, and trying to is the
+obvious wrong turn: a shape's base is flush with the ground it springs from, so the underside and
+the ground are the same height everywhere and a mean has nothing to lean on. What varies across a
+cantilever is reach, not height — so it is a distance transform out from the anchored columns, with
+the usual `falloff` over it.
+
+Also: a column joined to the hillside has no underside. Walking its solid run down goes through the
+terrain to bedrock. Reading that as the shape's base made the first version strip a hundred and
+twenty blocks of hillside out from under itself.
 
 What decides whether a shape is settled is whether **any** of its footprint is resting on terrain,
 not how far below the ground is. A distance limit stood in for that at first, at twice the radius,

@@ -58,7 +58,8 @@ import com.gtnh.sculptor.camera.SculptorCameraController;
 public class SculptorPanel extends CustomModularScreen {
 
     private static final int PANEL_WIDTH = 320;
-    private static final int PANEL_HEIGHT = 268;
+    /** Tall enough for the brush column, which is the longer of the two: it ends at y=286. */
+    private static final int PANEL_HEIGHT = 292;
     private static final int ROW_HEIGHT = 18;
 
     private static final int LEFT_X = 8;
@@ -227,6 +228,23 @@ public class SculptorPanel extends CustomModularScreen {
                 .top(y)
                 .onMousePressed(button -> {
                     settings.setUseSelectedMaterial(!settings.isUseSelectedMaterial());
+                    return true;
+                }));
+        y += 22;
+
+        // --- What becomes of a shape's overhang, when auto-smooth is on -----------------
+        panel.child(
+            new ButtonWidget<>().overlay(
+                IKey.dynamic(
+                    () -> settings.getOverhang()
+                        .label()))
+                .size(COLUMN_WIDTH, 16)
+                .left(LEFT_X)
+                .top(y)
+                .onMousePressed(button -> {
+                    settings.setOverhang(
+                        settings.getOverhang()
+                            .next());
                     return true;
                 }));
         y += 22;

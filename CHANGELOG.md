@@ -31,6 +31,11 @@
   below — so a shape dug into a cliff edge follows that cliff all the way down, and one
   floating in clear sky, touching nothing, is left exactly as it was drawn.
 
+  **There are two ways to want this, so there is a button for it.** "Fill to ground" is the
+  above. "Cantilever" leaves the overhang hanging and rounds its underside into the slope
+  instead: it meets the ground where the shape springs from and curves up to the shape's own
+  flat base as it reaches out, so the result is a ledge rather than a plateau.
+
   With the auto-smooth slider at zero nothing changes: a cylinder is exactly a cylinder,
   hanging base and all, which is what building in the air needs. Hollow shapes are never
   filled, since that would stop them being hollow.

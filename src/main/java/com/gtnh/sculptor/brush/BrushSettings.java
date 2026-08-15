@@ -55,6 +55,9 @@ public final class BrushSettings {
     /** Build with the chosen block rather than copying the existing surface material. */
     private boolean useSelectedMaterial = false;
 
+    /** What auto-smooth does with the part of a shape that has nothing under it. */
+    private OverhangMode overhang = OverhangMode.SETTLE;
+
     /** Bumped whenever anything changes, so the preview knows it is stale. */
     private int revision;
 
@@ -62,6 +65,17 @@ public final class BrushSettings {
 
     public static BrushSettings instance() {
         return INSTANCE;
+    }
+
+    public OverhangMode getOverhang() {
+        return overhang;
+    }
+
+    public void setOverhang(OverhangMode mode) {
+        if (mode != null && mode != this.overhang) {
+            this.overhang = mode;
+            revision++;
+        }
     }
 
     public SculptorBrush getBrush() {
@@ -173,7 +187,7 @@ public final class BrushSettings {
 
     /** Snapshot the current configuration for a brush run. */
     public BrushParams toParams() {
-        return new BrushParams(radius, getMaterial(), secondary, strength, autoSmooth, useSelectedMaterial);
+        return new BrushParams(radius, getMaterial(), secondary, strength, autoSmooth, useSelectedMaterial, overhang);
     }
 
     /**

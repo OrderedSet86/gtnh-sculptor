@@ -172,21 +172,24 @@ public enum SculptorBrush {
                 break;
         }
 
+        // Diffusion has to travel. A single pass shifts a column next to a two-block step by
+        // well under half a block, which rounds away to nothing, so the blend only reaches past
+        // the brush once enough passes have spread it -- more of them the stronger the setting.
+        int passes = Math.max(2, (int) Math.round(params.autoSmooth * 6.0D));
+
         // Before smoothing, so the height map sees a shape that is standing on something rather
         // than one hanging in the air.
         if (fillsDownToGround() && params.autoSmooth > 0.0D) {
-            Brushes.settleOntoGround(ctx, centre, params, groundBefore, reach);
+            if (params.overhang == OverhangMode.CANTILEVER) {
+                Brushes.cantileverOntoGround(ctx, centre, params, groundBefore, reach);
+            } else {
+                Brushes.settleOntoGround(ctx, centre, params, groundBefore, reach);
+            }
         }
 
         if (autoSmoothable && params.autoSmooth > 0.0D) {
             // Runs through the same context, so in commit mode it lands in the same undo entry
             // and in preview mode the ghost already shows the smoothed result.
-            //
-            // Diffusion has to travel. A single pass shifts a column next to a two-block step by
-            // well under half a block, which rounds away to nothing, so the blend only reaches
-            // past the brush once enough passes have spread it -- more of them the stronger the
-            // setting.
-            int passes = Math.max(2, (int) Math.round(params.autoSmooth * 6.0D));
             BrushParams smoothing = new BrushParams(
                 reach,
                 params.material,

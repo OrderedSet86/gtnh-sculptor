@@ -47,14 +47,23 @@ public final class BrushParams {
      */
     public final boolean useSelectedMaterial;
 
+    /** What becomes of the part of a placed shape with nothing under it. */
+    public final OverhangMode overhang;
+
     public BrushParams(int radius, BaseBlock material, int secondary, double strength, double autoSmooth,
         boolean useSelectedMaterial) {
+        this(radius, material, secondary, strength, autoSmooth, useSelectedMaterial, OverhangMode.SETTLE);
+    }
+
+    public BrushParams(int radius, BaseBlock material, int secondary, double strength, double autoSmooth,
+        boolean useSelectedMaterial, OverhangMode overhang) {
         this.radius = radius;
         this.material = material;
         this.secondary = secondary;
         this.strength = strength;
         this.autoSmooth = autoSmooth;
         this.useSelectedMaterial = useSelectedMaterial;
+        this.overhang = (overhang != null) ? overhang : OverhangMode.SETTLE;
     }
 
 }

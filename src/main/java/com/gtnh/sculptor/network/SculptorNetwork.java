@@ -23,6 +23,7 @@ import net.minecraft.network.NetHandlerPlayServer;
 import net.minecraft.util.ChatComponentText;
 
 import com.gtnh.sculptor.brush.BrushParams;
+import com.gtnh.sculptor.brush.OverhangMode;
 import com.gtnh.sculptor.brush.SculptorBrush;
 import com.gtnh.sculptor.edit.PlacementMask;
 import com.gtnh.sculptor.edit.SculptorEditContext;
@@ -70,8 +71,8 @@ public class SculptorNetwork {
 
     private static final byte OP_COMMIT = 1;
 
-    /** brush + xyz + radius + material + secondary + strength + autoSmooth + flags + mask. */
-    private static final int COMMIT_PAYLOAD_BYTES = 1 + 12 + 4 + 3 + 2 + 1 + 1 + 1 + 1;
+    /** brush + xyz + radius + material + secondary + strength + autoSmooth + flags + mask + overhang. */
+    private static final int COMMIT_PAYLOAD_BYTES = 1 + 12 + 4 + 3 + 2 + 1 + 1 + 1 + 1 + 1;
 
     /** Permission required to apply a brush. */
     private static final String PERMISSION_BRUSH = "sculptor.brush";
@@ -126,6 +127,7 @@ public class SculptorNetwork {
         buf.writeByte((int) Math.round(params.autoSmooth * 100.0D));
         buf.writeByte(params.useSelectedMaterial ? 1 : 0);
         buf.writeByte(mask.ordinal());
+        buf.writeByte(params.overhang.ordinal());
 
         channel.sendToServer(new FMLProxyPacket(buf, CHANNEL_NAME));
     }
@@ -163,6 +165,7 @@ public class SculptorNetwork {
         double autoSmooth = clamp01((buf.readByte() & 0xFF) / 100.0D);
         boolean useSelectedMaterial = buf.readByte() != 0;
         final PlacementMask mask = maskFromOrdinal(buf.readByte());
+        OverhangMode overhang = OverhangMode.fromOrdinal(buf.readByte());
 
         if (radius < 1 || radius > MAX_RADIUS) return;
         if (secondary < 0 || secondary > MAX_SECONDARY) return;
@@ -178,7 +181,8 @@ public class SculptorNetwork {
             secondary,
             strength,
             autoSmooth,
-            useSelectedMaterial);
+            useSelectedMaterial,
+            overhang);
 
         pending.add(new Runnable() {
 

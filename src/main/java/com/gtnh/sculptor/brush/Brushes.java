@@ -284,6 +284,122 @@ public final class Brushes {
         }
     }
 
+    /**
+     * Round the underside of an overhang into the ground it springs from, leaving it hanging.
+     *
+     * <p>
+     * The alternative to {@link #settleOntoGround}, and the same problem read the other way. An
+     * underside is a height field exactly as a surface is, so it smooths by the same means: take
+     * the bottom of the material in each column, call it the ground where the shape already
+     * reaches the ground, blur it, and move each column's underside toward the result. Material
+     * appears where the shape meets the slope and is taken away toward the free end, which turns
+     * a flat slab with a sheer edge into a curve -- a cantilever rather than a plateau.
+     * </p>
+     *
+     * <p>
+     * Nothing is ever cut below the ground as it stood before the stroke, and nothing is added
+     * below it either, so this shapes the placement and never the terrain.
+     * </p>
+     */
+    public static void cantileverOntoGround(SculptorEditContext ctx, Vector centre, BrushParams params,
+        int[] groundBefore, int reach) throws MaxChangedBlocksException {
+        int cx = centre.getBlockX();
+        int cy = centre.getBlockY();
+        int cz = centre.getBlockZ();
+        int r = params.radius;
+        int width = 2 * r + 1;
+        int reachWidth = 2 * reach + 1;
+
+        double rSq = (r + 0.5D) * (r + 0.5D);
+
+        int[] bottoms = new int[width * width];
+        int[] ground = new int[width * width];
+        int[] fromAnchor = new int[width * width];
+
+        java.util.ArrayDeque<Integer> frontier = new java.util.ArrayDeque<Integer>();
+        boolean anyOverhang = false;
+
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                int index = (dz + r) * width + (dx + r);
+                bottoms[index] = Integer.MIN_VALUE;
+                ground[index] = Integer.MIN_VALUE;
+                fromAnchor[index] = Integer.MAX_VALUE;
+
+                if (dx * dx + (double) dz * dz > rSq) continue;
+
+                int wasGround = groundBefore[(dz + reach) * reachWidth + (dx + reach)];
+                if (wasGround == Integer.MIN_VALUE) continue;
+
+                int bottom = terrainSurfaceY(ctx, cx + dx, cz + dz, cy);
+                if (bottom == Integer.MIN_VALUE) continue;
+                while (bottom > 0 && isGround(ctx, cx + dx, bottom - 1, cz + dz)) bottom--;
+
+                bottoms[index] = bottom;
+                ground[index] = wasGround;
+
+                // A column joined to the hillside has no underside to speak of -- walking down its
+                // solid run goes straight through the terrain to bedrock. Those columns are the
+                // anchor the curve springs from, and are never themselves touched.
+                if (bottom <= wasGround) {
+                    fromAnchor[index] = 0;
+                    frontier.add(index);
+                } else {
+                    anyOverhang = true;
+                }
+            }
+        }
+
+        if (!anyOverhang || frontier.isEmpty()) return;
+
+        // How far each column is from the nearest anchored one, in columns. A blur cannot supply
+        // this: with the shape's base flush to the ground it springs from, the underside and the
+        // ground are the same height everywhere and there is nothing for a mean to lean on. What
+        // varies across a cantilever is not height but reach.
+        while (!frontier.isEmpty()) {
+            int index = frontier.poll();
+            int ix = index % width;
+            int iz = index / width;
+
+            for (int side = 0; side < 4; side++) {
+                int nx = ix + ((side == 0) ? 1 : (side == 1) ? -1 : 0);
+                int nz = iz + ((side == 2) ? 1 : (side == 3) ? -1 : 0);
+                if (nx < 0 || nz < 0 || nx >= width || nz >= width) continue;
+
+                int neighbour = nz * width + nx;
+                if (bottoms[neighbour] == Integer.MIN_VALUE) continue;
+                if (fromAnchor[neighbour] <= fromAnchor[index] + 1) continue;
+
+                fromAnchor[neighbour] = fromAnchor[index] + 1;
+                frontier.add(neighbour);
+            }
+        }
+
+        // How far the fillet reaches out from the anchor before the underside levels off into the
+        // flat base of the shape.
+        double span = Math.max(2.0D, params.autoSmooth * r / 2.0D);
+
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                int index = (dz + r) * width + (dx + r);
+                int bottom = bottoms[index];
+                int wasGround = ground[index];
+                if (bottom == Integer.MIN_VALUE || wasGround == Integer.MIN_VALUE) continue;
+                if (bottom <= wasGround) continue;
+
+                double weight = falloff(fromAnchor[index], span);
+                if (weight <= 0.0D) continue;
+
+                int target = (int) Math.round(bottom - (bottom - wasGround) * weight);
+                if (target <= wasGround) target = wasGround + 1;
+
+                for (int y = bottom - 1; y >= target; y--) {
+                    ctx.setBlock(cx + dx, y, cz + dz, params.material);
+                }
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- terrain
 
     /**
