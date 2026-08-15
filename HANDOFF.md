@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 46 tests green.
+Current state: **0.4.0 in progress** on `main`, 47 tests green.
 
 ---
 
@@ -143,6 +143,19 @@ The tolerance on that test is the fiddly part, and both ends of it are wrong:
 
 So it is bounded by the same distance the sweep itself is allowed — the shape's own height. Support
 near enough for the curve to reach counts; support further away does not.
+
+**The cantilever takes the shape's extent from the brush, not from the world.** `shapeProfile`
+answers, per column, where this brush put its own material: a cylinder's base and height, a
+sphere's chord. Working it out afterwards -- find the top of the column, walk down to the bottom of
+the solid run -- reads correctly only where the shape hangs in clear air. Placed into a cliff,
+under a ledge or down a crevice it merges with what is already there, and the run is then the
+cliff's: the pass measured the wrong thickness, or dismissed the column as "fused to terrain" and
+shaped nothing at all. A cylinder cut into a real rock face came out with a droop of
+`0 4 0 0 0 0 0 0 0 0 0 0 0` across the entire disc.
+
+Taking it from the brush deleted three special cases that existed only to paper over the
+misreading: the fused-to-terrain test, the shape-top guard, and the per-column thickness clamp.
+Resist reintroducing anything that infers the shape from the result.
 
 **The height probe can walk underneath an overhang without seeing it.** `terrainSurfaceY` climbs
 only when it starts inside ground; otherwise it descends. `sampleHeights` carries a running probe

@@ -302,21 +302,17 @@ public final class Brushes {
      * </p>
      */
     public static void cantileverOntoGround(SculptorEditContext ctx, Vector centre, BrushParams params,
-        int[] groundBefore, int reach, int shapeHeight, int shapeTop, double depthFactor)
+        int[] groundBefore, int reach, int[] shapeBottom, int[] shapeTop, double depthFactor)
         throws MaxChangedBlocksException {
         int cx = centre.getBlockX();
-        int cy = centre.getBlockY();
         int cz = centre.getBlockZ();
         int r = params.radius;
         int width = 2 * r + 1;
         int reachWidth = 2 * reach + 1;
 
-        double rSq = (r + 0.5D) * (r + 0.5D);
-
-        int[] bottoms = new int[width * width];
         int[] ground = new int[width * width];
         int[] fromAnchor = new int[width * width];
-        boolean[] onGround = new boolean[width * width];
+        boolean[] resting = new boolean[width * width];
 
         java.util.ArrayDeque<Integer> frontier = new java.util.ArrayDeque<Integer>();
         boolean anyOverhang = false;
@@ -324,42 +320,21 @@ public final class Brushes {
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
                 int index = (dz + r) * width + (dx + r);
-                bottoms[index] = Integer.MIN_VALUE;
-                ground[index] = Integer.MIN_VALUE;
                 fromAnchor[index] = Integer.MAX_VALUE;
+                ground[index] = Integer.MIN_VALUE;
 
-                if (dx * dx + (double) dz * dz > rSq) continue;
+                if (shapeBottom[index] == Integer.MIN_VALUE) continue;
 
                 int wasGround = groundBefore[(dz + reach) * reachWidth + (dx + reach)];
-                if (wasGround == Integer.MIN_VALUE) continue;
-
-                int top = terrainSurfaceY(ctx, cx + dx, cz + dz, cy);
-                if (top == Integer.MIN_VALUE) continue;
-
-                int bottom = top;
-                while (bottom > 0 && isGround(ctx, cx + dx, bottom - 1, cz + dz)) bottom--;
-
-                bottoms[index] = bottom;
                 ground[index] = wasGround;
 
-                // A column joined to the terrain has no underside to speak of, and is the anchor
-                // the curve springs from rather than something to shape. That happens two ways:
-                // its run continues down through the hillside to bedrock, or it continues *up*
-                // into rock the shape was placed beneath. The second one is easy to miss, because
-                // the height probe walks along a row and can pass underneath an overhang without
-                // ever seeing it -- reporting the valley floor as the ground for a column that is
-                // fused to a ledge overhead. The column then reads as free-hanging material as
-                // tall as the ledge, and hangs a spike the height of it.
-                onGround[index] = bottom <= wasGround || top > shapeTop;
-                if (!onGround[index]) anyOverhang = true;
+                int base = shapeBottom[index];
+                int thickness = shapeTop[index] - base + 1;
 
-                // Support is not only what is underneath. An arch is built by spanning out from
-                // something that stands beside the new shape rather than below it, and defining
-                // the anchor as "this column reaches the ground" means a span like that finds no
-                // anchor at all and is left as the flat slab it was drawn as. A neighbouring
-                // column whose own material already stood as high as this one's underside is
-                // holding it up just as surely as ground would.
-                if (onGround[index] || touchesSolidBeside(groundBefore, reach, dx, dz, bottom, shapeHeight)) {
+                resting[index] = wasGround != Integer.MIN_VALUE && base <= wasGround;
+                if (!resting[index]) anyOverhang = true;
+
+                if (resting[index] || touchesSolidBeside(groundBefore, reach, dx, dz, base, thickness)) {
                     fromAnchor[index] = 0;
                     frontier.add(index);
                 }
@@ -368,41 +343,30 @@ public final class Brushes {
 
         if (!anyOverhang || frontier.isEmpty()) return;
 
-        // Distance, in columns, to the nearest anchored one. A blur cannot supply what is needed
-        // here: the shape's base is flush with the ground it springs from, so the underside and
-        // the ground sit at the same height everywhere and a mean has nothing to lean on. What
-        // varies across a cantilever is reach, not height.
-        spreadDistances(frontier, fromAnchor, bottoms, width);
+        // Distance out from the columns the shape springs from, and in from its free edge. A blur
+        // cannot supply what is needed here: the shape's base is flush with the ground it springs
+        // from, so the underside and the ground sit at the same height everywhere and a mean has
+        // nothing to lean on. What varies across a cantilever is reach, not height.
+        spreadDistances(frontier, fromAnchor, shapeBottom, width);
 
-        // And distance to the free edge, from the columns of the footprint that have open air
-        // beside them. A cantilever is pinned at both ends: thick where it springs from the
-        // ground, thinning to an edge where it ends. Pinning only the anchor was the first
-        // attempt, and it left everything past the fillet as the flat slab it started as --
-        // a floating island with the underside untouched, which is exactly what it looked like.
         int[] fromRim = new int[width * width];
         java.util.ArrayDeque<Integer> rim = new java.util.ArrayDeque<Integer>();
         for (int index = 0; index < fromRim.length; index++) {
             fromRim[index] = Integer.MAX_VALUE;
-            if (bottoms[index] == Integer.MIN_VALUE) continue;
+            if (shapeBottom[index] == Integer.MIN_VALUE) continue;
 
-            int ix = index % width;
-            int iz = index / width;
-            if (isFootprintEdge(bottoms, width, ix, iz)) {
+            if (isFootprintEdge(shapeBottom, width, index % width, index / width)) {
                 fromRim[index] = 0;
                 rim.add(index);
             }
         }
-        spreadDistances(rim, fromRim, bottoms, width);
+        spreadDistances(rim, fromRim, shapeBottom, width);
 
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
                 int index = (dz + r) * width + (dx + r);
-                int bottom = bottoms[index];
-                int wasGround = ground[index];
-                if (bottom == Integer.MIN_VALUE || wasGround == Integer.MIN_VALUE) continue;
-
-                // Only the hanging part is shaped. Ground the shape already sits on is left alone.
-                if (onGround[index]) continue;
+                int base = shapeBottom[index];
+                if (base == Integer.MIN_VALUE || resting[index]) continue;
 
                 int toAnchor = fromAnchor[index];
                 int toRim = fromRim[index];
@@ -410,40 +374,26 @@ public final class Brushes {
                 if (toAnchor + toRim == 0) continue;
 
                 // Where this column sits between the anchor and the free edge, 0 at the edge and
-                // 1 against the hillside. Normalising by the column's own two distances is what
-                // makes the curve span the whole overhang rather than a fixed number of blocks:
-                // a fixed span reaches the shape's flat base a few columns in and leaves
-                // everything past it as the slab it started as, which is the floating island.
+                // 1 against the support. Normalising by the column's own two distances is what
+                // makes the curve span the whole overhang rather than a fixed number of blocks.
                 double along = toRim / (double) (toAnchor + toRim);
                 double eased = along * along * (3.0D - 2.0D * along);
 
-                // The underside sweeps down to the ground where the shape meets the slope, and is
-                // left at the shape's own base at the free edge -- so the outer face keeps its
-                // full height and the void behind it is closed by a curve. Thinning the free edge
-                // instead is the same curve upside down, and gives a wedge rather than a ledge.
-                // The underside curves down by at most the shape's own height. Letting it run all
-                // the way to whatever happens to be beneath turns a soffit into a curtain wall --
-                // measured at eighty blocks for a ten-block cylinder placed off a tower, which is
-                // the other mode's job, not this one's. Ground nearer than that is still reached,
-                // so a shape sitting on a slope still merges into it.
-                // The brush's own height, not the height of whatever solid run this column happens
-                // to be part of. Where a shape merges into something taller, that run is the taller
-                // thing, and taking it as the shape's size lets a seven-block cylinder hang a
-                // thirty-block spike off a wall. Nor is it the brush's largest dimension: a
-                // sphere is only as deep as it is at this column, and its thin rim should not
-                // hang as long a curtain as its middle. Safe to read off the run, since a column
-                // fused to anything above is excluded and one reaching the ground never gets here.
-                int thickness = Math.min(shapeHeight, terrainSurfaceY(ctx, cx + dx, cz + dz, cy) - bottom + 1);
-                int ownDepth = Math.max(1, (int) Math.round(thickness * depthFactor));
-                int floor = Math.max(wasGround, bottom - ownDepth);
+                int thickness = shapeTop[index] - base + 1;
+                int depth = Math.max(1, (int) Math.round(thickness * depthFactor));
 
-                int target = (int) Math.round(bottom - (bottom - floor) * eased * params.autoSmooth);
+                int wasGround = ground[index];
+                int floor = base - depth;
+                if (wasGround != Integer.MIN_VALUE) floor = Math.max(floor, wasGround);
+
+                int target = (int) Math.round(base - (base - floor) * eased * params.autoSmooth);
                 if (target < floor) target = floor;
-                if (target > bottom) target = bottom;
+                if (target > base) target = base;
 
-                // Only ever fills. Everything between the new underside and the shape's base is
-                // material this stroke placed, and the ground below is never reached.
-                for (int y = bottom - 1; y >= target; y--) {
+                for (int y = base - 1; y >= target; y--) {
+                    // Something already here is the thing holding the shape up, and the curve has
+                    // met it. Below that is not ours to fill.
+                    if (!ctx.isAir(cx + dx, y, cz + dz)) break;
                     ctx.setBlock(cx + dx, y, cz + dz, params.material);
                 }
             }

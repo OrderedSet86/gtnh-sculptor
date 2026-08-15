@@ -402,11 +402,10 @@ public class OverhangModeTest {
      * A shape placed under an overhang must not hang a spike the height of the overhang.
      *
      * <p>
-     * Two separate mistakes met here. The curve's depth was measured as the contiguous solid run
-     * in the column, which for a shape fused to a ledge is the ledge; and such a column was read
-     * as free-hanging at all, because the height probe walks along a row and can pass underneath
-     * an overhang without seeing it, reporting the valley floor as the ground beneath it. A
-     * ten-block cylinder under a thirty-block ledge dropped a thirty-one block spike.
+     * The curve's depth used to be measured as the contiguous solid run in the column, which for
+     * a shape fused to a ledge is the ledge: a ten-block cylinder under a thirty-block ledge
+     * dropped a thirty-one block spike. It comes from the brush's own profile now, so a fused
+     * column is blended like any other and bounded by the shape's own thickness.
      * </p>
      */
     @Test
@@ -423,11 +422,6 @@ public class OverhangModeTest {
         for (int dx = -RADIUS + 8; dx <= RADIUS + 8; dx++) {
             int bottom = bottomOf(ctx, dx, 0);
             if (bottom == Integer.MIN_VALUE || bottom < CENTRE_Y - 79) continue;
-
-            // Columns fused to the ledge overhead are support, not overhang.
-            if (dx >= 1 && dx <= 6) {
-                assertEquals("column " + dx + " is fused to the ledge and should be left alone", CENTRE_Y, bottom);
-            }
 
             if (bottom < CENTRE_Y) sweptSomewhere = true;
             deepest = Math.min(deepest, bottom);

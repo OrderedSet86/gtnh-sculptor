@@ -181,19 +181,18 @@ public enum SculptorBrush {
         // than one hanging in the air.
         if (fillsDownToGround() && params.autoSmooth > 0.0D) {
             if (params.overhang == OverhangMode.CANTILEVER) {
-                // The shape's own vertical extent, which is what bounds the curve. A cylinder
-                // knows its height; a sphere is as tall as it is wide.
-                int shapeHeight = (this == CYLINDER) ? Math.max(1, params.secondary) : (2 * params.radius + 1);
-                // The highest block this brush could possibly have placed. Anything standing above
-                // it in a column was already there.
-                int shapeTop = centre.getBlockY() + ((this == CYLINDER) ? shapeHeight - 1 : params.radius);
-                // How much of a column's own thickness the underside may fall through. A
-                // cylinder has a flat soffit to round off and can use the lot; a sphere is
-                // already curved underneath, and letting it drop by its full thickness hangs a
-                // teardrop rather than blending into anything, so it gets half.
+                int width = 2 * params.radius + 1;
+                int[] shapeBottom = new int[width * width];
+                int[] shapeTop = new int[width * width];
+                shapeProfile(centre, params, shapeBottom, shapeTop);
+
+                // How much of a column's own thickness the underside may fall through. A cylinder
+                // has a flat soffit to round off and can use the lot; a sphere is already curved
+                // underneath, and letting it drop by its full thickness hangs a teardrop rather
+                // than blending into anything, so it gets half.
                 double depthFactor = (this == CYLINDER) ? 1.0D : 0.5D;
                 Brushes
-                    .cantileverOntoGround(ctx, centre, params, groundBefore, reach, shapeHeight, shapeTop, depthFactor);
+                    .cantileverOntoGround(ctx, centre, params, groundBefore, reach, shapeBottom, shapeTop, depthFactor);
             } else {
                 Brushes.settleOntoGround(ctx, centre, params, groundBefore, reach);
             }
@@ -229,6 +228,47 @@ public enum SculptorBrush {
                 Brushes.smooth(ctx, centre, smoothing, passes, maxStep, groundBefore, keepPlacement);
             } finally {
                 if (guardAutoSmooth) ctx.setGuardRemovals(false);
+            }
+        }
+    }
+
+    /**
+     * Where this brush's own material starts and ends in every column of its footprint, with
+     * {@link Integer#MIN_VALUE} outside it.
+     *
+     * <p>
+     * The cantilever used to work this out by looking at the world afterwards -- find the top of
+     * the column, walk down to the bottom of the solid run. That reads correctly only where the
+     * shape happens to hang in clear air. Placed into a cliff, under a ledge or down a crevice it
+     * merges with what is already there, and the run is then the cliff's, not the shape's: the
+     * pass either measured the wrong thickness or gave up on the column entirely, which is why a
+     * cylinder cut into a rock face got no underside at all. The brush knows where it put its
+     * blocks. Asking it removes the guesswork and every special case built around it.
+     * </p>
+     */
+    private void shapeProfile(Vector centre, BrushParams params, int[] bottom, int[] top) {
+        int r = params.radius;
+        int width = 2 * r + 1;
+        int cy = centre.getBlockY();
+        double rSq = (r + 0.5D) * (r + 0.5D);
+
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                int index = (dz + r) * width + (dx + r);
+                double dSq = dx * dx + (double) dz * dz;
+                if (dSq > rSq) {
+                    bottom[index] = Integer.MIN_VALUE;
+                    continue;
+                }
+
+                if (this == CYLINDER) {
+                    bottom[index] = cy;
+                    top[index] = cy + Math.max(1, params.secondary) - 1;
+                } else {
+                    int half = (int) Math.floor(Math.sqrt(rSq - dSq));
+                    bottom[index] = cy - half;
+                    top[index] = cy + half;
+                }
             }
         }
     }

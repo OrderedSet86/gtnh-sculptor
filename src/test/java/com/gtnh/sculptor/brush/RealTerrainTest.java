@@ -96,6 +96,69 @@ public class RealTerrainTest {
     }
 
     /**
+     * A cylinder cut into a real rock face gets an underside, where before it got none.
+     *
+     * <p>
+     * The pass used to read the shape's extent off the world after placing it -- top of the
+     * column, walk down to the bottom of the solid run. Merged into a cliff, that run is the
+     * cliff's, so nearly every column was either dismissed as fused to the terrain or measured at
+     * the wrong thickness, and the droop came out as "0 4 0 0 0 0 0 0 0 0 0 0 0" across the whole
+     * disc. Taking the profile from the brush instead leaves nothing to misread.
+     * </p>
+     *
+     * <p>
+     * Twelve blocks tall on purpose. The rock at this spot stands eight to twelve blocks above the
+     * brush centre, so a shorter cylinder is buried in it and correctly has no underside to shape.
+     * </p>
+     */
+    @Test
+    public void aCylinderCutIntoARockFaceGetsAnUnderside() throws Exception {
+        Vector at = new Vector(907, 40, -623);
+        int tall = 12;
+
+        SculptorEditContext plain = strokeTall(at, 0.0D, tall);
+        SculptorEditContext shaped = strokeTall(at, 1.0D, tall);
+
+        int curved = 0;
+        int deepest = 0;
+        for (int dx = -RADIUS; dx <= RADIUS; dx++) {
+            int before = undersideAt(plain, at.getBlockX() + dx, at.getBlockY(), at.getBlockZ());
+            int after = undersideAt(shaped, at.getBlockX() + dx, at.getBlockY(), at.getBlockZ());
+            if (before == Integer.MIN_VALUE || after == Integer.MIN_VALUE) continue;
+
+            if (before > after) curved++;
+            deepest = Math.max(deepest, before - after);
+        }
+
+        assertTrue("only " + curved + " columns got an underside, out of " + (2 * RADIUS + 1), curved >= 6);
+        assertTrue("the underside dropped " + deepest + " blocks under a " + tall + "-block shape", deepest <= tall);
+    }
+
+    private static SculptorEditContext strokeTall(Vector at, double autoSmooth, int height) throws Exception {
+        SculptorEditContext ctx = SculptorEditContext.preview(RecordedTerrain.named("noBottomSmoothing"));
+        SculptorBrush.CYLINDER.apply(
+            ctx,
+            at,
+            new BrushParams(
+                RADIUS,
+                new BaseBlock(BlockID.STONE),
+                height,
+                1.0D,
+                autoSmooth,
+                false,
+                OverhangMode.CANTILEVER));
+        return ctx;
+    }
+
+    private static int undersideAt(SculptorEditContext ctx, int x, int cy, int z) {
+        int y = cy + 40;
+        while (y >= 0 && ctx.isAir(new Vector(x, y, z))) y--;
+        if (y < 0) return Integer.MIN_VALUE;
+        while (y > 0 && !ctx.isAir(new Vector(x, y - 1, z))) y--;
+        return y;
+    }
+
+    /**
      * Filling to ground is a different bargain: there the shape is meant to become part of the
      * hill, so reshaping the ground around it is the point and it is allowed to cut.
      */

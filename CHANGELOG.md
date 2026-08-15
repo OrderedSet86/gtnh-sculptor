@@ -54,10 +54,17 @@
   by adding now. Filling to ground is unchanged and still reshapes freely — there the shape
   is meant to become part of the hill.
 
-  A shape placed *under* an overhang no longer hangs a spike the height of the overhang —
-  a ten-block cylinder beneath a thirty-block ledge dropped a thirty-one block stalactite.
-  Such a column is fused to the ledge rather than hanging free, and is now treated as
-  support.
+  **A shape cut into a rock face now gets an underside at all.** The pass worked out where
+  the shape was by looking at the world after placing it, which only reads correctly where
+  the shape hangs in clear air — merged into a cliff, under a ledge or down a crevice, it
+  measured the cliff instead and either used the wrong thickness or skipped the column as
+  part of the terrain. Measured on a real cliff face, a cylinder came out with a droop of
+  `0 4 0 0 0 0 0 0 0 0 0 0 0`: nothing, across the whole disc. It asks the brush where it
+  put its blocks now, so being buried in rock changes nothing.
+
+  That also settles the stalactite under an overhanging ledge — a ten-block cylinder
+  beneath a thirty-block ledge used to hang a thirty-one block spike, because the ledge's
+  height was being read as the shape's.
 
   Support counts when it is near enough for the underside to curve down to it, rather than
   only when it comes right up to the shape's base — a shape placed at a cliff edge usually
