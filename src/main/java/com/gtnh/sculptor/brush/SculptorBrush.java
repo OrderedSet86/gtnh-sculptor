@@ -179,13 +179,16 @@ public enum SculptorBrush {
 
         // Before smoothing, so the height map sees a shape that is standing on something rather
         // than one hanging in the air.
-        if (fillsDownToGround() && params.autoSmooth > 0.0D) {
-            if (params.overhang == OverhangMode.CANTILEVER) {
-                int width = 2 * params.radius + 1;
-                int[] shapeBottom = new int[width * width];
-                int[] shapeTop = new int[width * width];
-                shapeProfile(centre, params, shapeBottom, shapeTop);
+        boolean cantilever = fillsDownToGround() && params.autoSmooth > 0.0D
+            && params.overhang == OverhangMode.CANTILEVER;
 
+        int width = 2 * params.radius + 1;
+        int[] shapeBottom = cantilever ? new int[width * width] : null;
+        int[] shapeTop = cantilever ? new int[width * width] : null;
+        if (cantilever) shapeProfile(centre, params, shapeBottom, shapeTop);
+
+        if (fillsDownToGround() && params.autoSmooth > 0.0D) {
+            if (cantilever) {
                 // How much of a column's own thickness the underside may fall through. A cylinder
                 // has a flat soffit to round off and can use the lot; a sphere is already curved
                 // underneath, and letting it drop by its full thickness hangs a teardrop rather
@@ -225,7 +228,22 @@ public enum SculptorBrush {
                 // an island of lumps. Filling to ground has no such face to preserve: there the
                 // taper down to the surrounding terrain is the whole point.
                 boolean keepPlacement = params.overhang == OverhangMode.CANTILEVER && fillsDownToGround();
-                Brushes.smooth(ctx, centre, smoothing, passes, maxStep, groundBefore, keepPlacement);
+                // Where the seam can plausibly be: no lower than the shape's own underside, less
+                // its thickness again and the leash. Ground further down than that is not being
+                // blended into anything, it is just in the same disc.
+                int blendFloor = Integer.MIN_VALUE;
+                if (keepPlacement && shapeBottom != null) {
+                    int lowest = Integer.MAX_VALUE;
+                    int thickest = 1;
+                    for (int i = 0; i < shapeBottom.length; i++) {
+                        if (shapeBottom[i] == Integer.MIN_VALUE) continue;
+                        lowest = Math.min(lowest, shapeBottom[i]);
+                        thickest = Math.max(thickest, shapeTop[i] - shapeBottom[i] + 1);
+                    }
+                    if (lowest != Integer.MAX_VALUE) blendFloor = lowest - thickest - maxStep;
+                }
+
+                Brushes.smooth(ctx, centre, smoothing, passes, maxStep, groundBefore, keepPlacement, blendFloor);
             } finally {
                 if (guardAutoSmooth) ctx.setGuardRemovals(false);
             }

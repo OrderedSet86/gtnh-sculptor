@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 47 tests green.
+Current state: **0.4.0 in progress** on `main`, 49 tests green.
 
 ---
 
@@ -143,6 +143,14 @@ The tolerance on that test is the fiddly part, and both ends of it are wrong:
 
 So it is bounded by the same distance the sweep itself is allowed — the shape's own height. Support
 near enough for the curve to reach counts; support further away does not.
+
+**A height map spans a vertical face as though it were a slope.** Two columns either side of a
+cliff are neighbours to the averaging, however many blocks apart they are vertically — so the
+ground at the foot of a leg gets averaged against the leg's top and climbs to meet a shape placed
+forty blocks overhead. In cantilever mode the blend has a floor for that reason: a column whose
+surface lies further below the shape than the shape's own thickness plus the leash is not part of
+any seam and is skipped. Both ends matter — no floor and the ground rises around distant legs, a
+floor at the shape's base and blending switches off for everything that is not exactly flush.
 
 **The cantilever takes the shape's extent from the brush, not from the world.** `shapeProfile`
 answers, per column, where this brush put its own material: a cylinder's base and height, a

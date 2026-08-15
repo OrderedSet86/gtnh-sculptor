@@ -625,7 +625,7 @@ public final class Brushes {
      */
     public static void smooth(SculptorEditContext ctx, Vector centre, BrushParams params, int iterations, int maxStep,
         int[] groundBefore) throws MaxChangedBlocksException {
-        smooth(ctx, centre, params, iterations, maxStep, groundBefore, false);
+        smooth(ctx, centre, params, iterations, maxStep, groundBefore, false, Integer.MIN_VALUE);
     }
 
     /**
@@ -638,7 +638,7 @@ public final class Brushes {
      *                      doing.
      */
     public static void smooth(SculptorEditContext ctx, Vector centre, BrushParams params, int iterations, int maxStep,
-        int[] groundBefore, boolean keepPlacement) throws MaxChangedBlocksException {
+        int[] groundBefore, boolean keepPlacement, int blendFloor) throws MaxChangedBlocksException {
         int cx = centre.getBlockX();
         int cy = centre.getBlockY();
         int cz = centre.getBlockZ();
@@ -692,6 +692,13 @@ public final class Brushes {
 
                     // A column standing higher than it did is one the stroke built in.
                     if (keepPlacement && before != Integer.MIN_VALUE && surface > before) continue;
+
+                    // Nor does it reach down to ground that is nowhere near the shape. A height
+                    // map spans a vertical face as if it were a slope, so a column of open ground
+                    // forty blocks below a shape still gets averaged against it and climbs to
+                    // meet it -- a ring of raised earth around the foot of a leg whose top the
+                    // brush never came near. Anything that far under the shape is not a seam.
+                    if (keepPlacement && blendFloor != Integer.MIN_VALUE && surface < blendFloor) continue;
 
                     // In that mode the blend adds and never takes away. The shape is being kept
                     // for its own geometry, so cutting the landscape around it to meet it is the

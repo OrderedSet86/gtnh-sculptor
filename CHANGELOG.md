@@ -47,6 +47,12 @@
   to be below turns a soffit into a curtain wall, which is what the other mode is for. A
   piece placed touching nothing at all is still left exactly as drawn.
 
+  Cantilever mode also no longer drags distant ground up to meet the shape. A height map
+  spans a vertical face as though it were a slope, so ground at the foot of a leg is a
+  column or two from the leg's top as far as the averaging is concerned — and a shape placed
+  at the top left a ring of raised earth around the bottom, forty blocks away from anything
+  the brush touched. Ground that far under the shape is not a seam and is left alone.
+
   Cantilever mode no longer deletes terrain that was already there. It keeps the shape you
   drew, so cutting the landscape around it to meet that shape is the wrong half of the
   bargain: on a rough cliff face it was trimming every bump within reach by a block or two,
