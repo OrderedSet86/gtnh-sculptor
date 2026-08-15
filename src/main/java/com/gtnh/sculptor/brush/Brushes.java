@@ -344,6 +344,21 @@ public final class Brushes {
      */
     public static void smooth(SculptorEditContext ctx, Vector centre, BrushParams params, int iterations)
         throws MaxChangedBlocksException {
+        smooth(ctx, centre, params, iterations, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Average each column's height against its neighbours, moving none of them further than
+     * {@code maxStep}.
+     *
+     * @param maxStep how far a single column may move, in blocks. The smooth brush is unbounded --
+     *                the player asked for it. The auto-smooth pass is not: it is there to blend a
+     *                shape into the ground it was placed in, and a mean taken next to a
+     *                nineteen-block cylinder is nineteen blocks away, so uncapped it hollowed out
+     *                whole hillsides rather than softening a seam.
+     */
+    public static void smooth(SculptorEditContext ctx, Vector centre, BrushParams params, int iterations, int maxStep)
+        throws MaxChangedBlocksException {
         int cx = centre.getBlockX();
         int cy = centre.getBlockY();
         int cz = centre.getBlockZ();
@@ -387,6 +402,8 @@ public final class Brushes {
                 // falloff is smallest, so damping by it shrinks a genuine one-block correction
                 // to a fraction and rounding then discards it entirely.
                 int desired = (int) Math.round(surface + (smoothed - surface) * params.strength);
+                if (desired > surface + maxStep) desired = surface + maxStep;
+                if (desired < surface - maxStep) desired = surface - maxStep;
 
                 // Cutting a column whose material does not reach that far down would clear the
                 // gap and then stamp a surface block into thin air, one per column -- which is

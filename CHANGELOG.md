@@ -19,6 +19,18 @@
 
 ### Fixes
 
+- **Auto-smooth no longer reshapes the hillside it was meant to blend into.** The pass
+  moved every column to its local mean, and beside a nineteen-block cylinder that mean is
+  nineteen blocks away — so one stroke at full auto-smooth hollowed out the slope it was
+  dropped into and left the parts it could not cut standing as columns. Measured on a
+  radius-12 cylinder over a rough slope it was moving ground up to sixteen blocks; it is now
+  capped at a third of the brush radius, four blocks there, while still blending the same
+  seven hundred columns. The smooth brush itself is unchanged and stays uncapped — you asked
+  for that one.
+- **Removal markers no longer shimmer against the terrain they mark.** The red boxes sat
+  just inside their block and relied on a polygon offset to pull them in front, which buys a
+  distance-dependent amount of depth — too little up close, far too much at range, and a
+  pixel-by-pixel coin toss in between. They enclose the block now.
 - **"Air only" now binds the auto-smooth pass.** The placement mask governs building rather
   than carving, so that choosing "air only" does not silently disable every brush that
   removes blocks. Auto-smooth is the exception: it is a pass you did not ask for, and it

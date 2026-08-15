@@ -183,9 +183,15 @@ public enum SculptorBrush {
             // "Air only" means leave what is already there alone, and the player did not ask for
             // this pass -- so here, unlike in a brush they chose, the mask governs cutting as
             // well as building. Undoing what the stroke just placed is still allowed.
+            // How far this pass may move any one column. It exists to soften the seam where a
+            // placed shape meets the ground, so it must not be free to take a column wherever the
+            // local mean happens to sit: beside a nineteen-block cylinder that mean is nineteen
+            // blocks away, and following it hollowed out the hillside instead of blending into it.
+            int maxStep = Math.max(2, (int) Math.round(params.autoSmooth * params.radius / 3.0D));
+
             if (guardAutoSmooth) ctx.setGuardRemovals(true);
             try {
-                Brushes.smooth(ctx, centre, smoothing, passes);
+                Brushes.smooth(ctx, centre, smoothing, passes, maxStep);
             } finally {
                 if (guardAutoSmooth) ctx.setGuardRemovals(false);
             }

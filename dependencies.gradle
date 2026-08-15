@@ -57,6 +57,15 @@ dependencies {
     // any realistic GTNH install, so run against it.
     runtimeOnlyNonPublishable 'com.github.GTNewHorizons:NotEnoughItems:2.8.72-GTNH:dev'
 
+    // Biomes O' Plenty, for the dev client only. Nothing compiles against it -- BlockBOPLog is
+    // reached through the ore dictionary, not by type -- but its trees and logs are what the tree
+    // and foliage-removal brushes have to be tried against, and no unit test can cover them: both
+    // need a block registry, which is not bootstrapped headlessly.
+    // Wrapped in rfg.deobf because CurseForge serves the obfuscated release jar: without it BOP
+    // loads and then dies on NoSuchMethodError func_71410_x, its SRG names having no counterpart
+    // in a dev client's MCP-named Minecraft.
+    runtimeOnlyNonPublishable(rfg.deobf('curse.maven:biomes-o-plenty-220318:2499612'))
+
     testImplementation 'junit:junit:4.13.2'
     // Lets the commit path be tested against a stand-in EditSession, so preview-vs-commit
     // equivalence can be checked without booting a WorldEdit platform.

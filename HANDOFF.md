@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 30 tests green.
+Current state: **0.4.0 in progress** on `main`, 31 tests green.
 
 ---
 
@@ -98,6 +98,14 @@ is the one thing that setting exists to prevent. `SculptorBrush.apply` turns on
 the stroke so undoing the stroke's own new material is still allowed. Tracking is opt-in because
 the set of written positions grows with the brush volume, which at the server's maximum radius is
 millions of entries.
+
+**Auto-smooth must be capped; the smooth brush must not be.** They are the same code, and the
+difference is who asked. Smoothing moves a column to the local mean, and next to a nineteen-block
+cylinder the local mean is nineteen blocks away — so the pass that was supposed to soften a seam
+hollowed out the hillside instead, and left the columns it could not cut standing as pillars.
+`SculptorBrush.apply` passes `maxStep` for that reason. Beware of measuring this by eye: the first
+attempt compared the smoothed result against the untouched world, which mostly measures the
+cylinder. Compare against the same stroke with auto-smooth at zero.
 
 **A surface is not the same thing as ground.** The height map cannot tell a two-block ledge over a
 drop from a hillside — both are the top of a column. Lowering one clears the gap beneath it and
@@ -229,8 +237,14 @@ itself, builds, verifies the jar declares `modid=sculptor` and the right version
 It is deliberately *not* triggered by pushing a tag, since it makes the tag — both triggers would
 race. On failure it deletes the tag so the version can be retried.
 
-**Dependency notes.** `worldedit-gtnh` is only on JitPack, scoped to that one module in
-`repositories.gradle`. `jchronic`/`jlibnoise` are pinned to EngineHub with `exclusiveContent`
+**Dependency notes.** Biomes O' Plenty is in the dev client only, and nothing compiles against it
+— its logs are reached through the ore dictionary, not by type. It is there because the tree and
+foliage-removal brushes cannot be unit-tested at all and BOP is what they get wrong. CurseForge
+serves the obfuscated release jar, so it needs `rfg.deobf(...)` around the coordinate; without that
+it loads and then dies on `NoSuchMethodError: func_71410_x`, its SRG names having no counterpart in
+a dev client's MCP-named Minecraft.
+
+`worldedit-gtnh` is only on JitPack, scoped to that one module in `repositories.gradle`. `jchronic`/`jlibnoise` are pinned to EngineHub with `exclusiveContent`
 because another mirror times out from CI, and a repository that *times out* fails resolution
 outright, unlike a 404 which falls through.
 

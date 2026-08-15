@@ -12,6 +12,16 @@ repositories {
         }
     }
 
+    // Biomes O' Plenty is a dev-client-only dependency, and CurseForge is the only place it is
+    // published. Scoped to the curse.maven group so nothing else is ever looked up here.
+    maven {
+        name "CurseMaven"
+        url "https://cursemaven.com"
+        content {
+            includeGroup "curse.maven"
+        }
+    }
+
     // WorldEdit's two shaded dependencies -- jchronic and jlibnoise -- are not on Maven Central
     // and are served by only a couple of hosts. One of the repositories this build otherwise
     // consults for them is frequently unreachable from CI, and a repository that *times out*

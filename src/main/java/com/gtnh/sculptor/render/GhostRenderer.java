@@ -71,8 +71,19 @@ public class GhostRenderer {
     /** How solid the ghost appears. */
     private static final float ALPHA = 0.55f;
 
-    /** How far a removal box is inset into its block, to avoid z-fighting with real terrain. */
-    private static final double REMOVAL_INSET = 0.02D;
+    /**
+     * How far a removal box is grown past its block.
+     *
+     * <p>
+     * It used to be inset instead, which put its faces just <em>behind</em> the terrain it marks
+     * and left the polygon offset to pull them forward. How much depth a polygon offset unit buys
+     * depends on distance, so near the camera it was not enough to clear the inset and far away it
+     * was far more than enough -- and somewhere in between the two surfaces traded places pixel by
+     * pixel, which is the speckling along a removal edge. Growing the box instead puts it in front
+     * by a fixed distance in world space, which no amount of depth precision can reverse.
+     * </p>
+     */
+    private static final double REMOVAL_OUTSET = 0.01D;
 
     private Map<BlockVector, BaseBlock> pending;
 
@@ -287,12 +298,12 @@ public class GhostRenderer {
 
     /** Six faces of a slightly inset cube, in red. */
     private static void addBox(Tessellator tes, int bx, int by, int bz) {
-        double x0 = bx + REMOVAL_INSET;
-        double y0 = by + REMOVAL_INSET;
-        double z0 = bz + REMOVAL_INSET;
-        double x1 = bx + 1 - REMOVAL_INSET;
-        double y1 = by + 1 - REMOVAL_INSET;
-        double z1 = bz + 1 - REMOVAL_INSET;
+        double x0 = bx - REMOVAL_OUTSET;
+        double y0 = by - REMOVAL_OUTSET;
+        double z0 = bz - REMOVAL_OUTSET;
+        double x1 = bx + 1 + REMOVAL_OUTSET;
+        double y1 = by + 1 + REMOVAL_OUTSET;
+        double z1 = bz + 1 + REMOVAL_OUTSET;
 
         tes.setColorRGBA_F(1.0f, 0.25f, 0.25f, 1.0f);
 
