@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 44 tests green.
+Current state: **0.4.0 in progress** on `main`, 46 tests green.
 
 ---
 
@@ -305,6 +305,14 @@ one exception worth knowing:
 `isFoliage` matches mushroom caps and `DOUBLE_PLANT` by block id *before* it consults the registry,
 so those three are the only plants a headless test can use as plants — anything else reads as
 solid terrain and proves nothing.
+
+**Some cases only exist in a real world.** `RecordedTerrain` replays a box of blocks lifted out of
+a saved world, kept as `src/test/resources/sculptor-test-terrain.txt` — solid-or-air only, which is
+all the brushes read headlessly. Two reported bugs were reproduced there after hand-built terrain
+failed to provoke either: the shapes that break these brushes are undercuts, ledges overhead and
+faces too rough to think of modelling, and a test world someone builds by hand is a model of what
+they already believe. To add a case, extract another box around the brush target; the coordinates
+come from the F3 position and look angles, raytraced the way `SculptorBrushTool` does.
 
 **Test terrain has to have relief.** Every brush test ran on flat ground until 0.3.0, which is
 exactly why the surface-window bug above survived the suite: on flat ground the window is never

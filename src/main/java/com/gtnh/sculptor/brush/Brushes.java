@@ -743,6 +743,13 @@ public final class Brushes {
                     // A column standing higher than it did is one the stroke built in.
                     if (keepPlacement && before != Integer.MIN_VALUE && surface > before) continue;
 
+                    // In that mode the blend adds and never takes away. The shape is being kept
+                    // for its own geometry, so cutting the landscape around it to meet it is the
+                    // wrong half of the bargain -- on a rough cliff face it reads as a scatter of
+                    // ground blocks vanishing for no visible reason, over a hundred of them for a
+                    // single stroke, none of them anywhere near the shape.
+                    if (keepPlacement && desired < surface) continue;
+
                     if (before != Integer.MIN_VALUE && before < wasGround) wasGround = before;
                 }
 

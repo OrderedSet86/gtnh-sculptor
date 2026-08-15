@@ -47,6 +47,13 @@
   to be below turns a soffit into a curtain wall, which is what the other mode is for. A
   piece placed touching nothing at all is still left exactly as drawn.
 
+  Cantilever mode no longer deletes terrain that was already there. It keeps the shape you
+  drew, so cutting the landscape around it to meet that shape is the wrong half of the
+  bargain: on a rough cliff face it was trimming every bump within reach by a block or two,
+  over a hundred blocks for a single stroke, scattered and nowhere near the shape. It blends
+  by adding now. Filling to ground is unchanged and still reshapes freely — there the shape
+  is meant to become part of the hill.
+
   A shape placed *under* an overhang no longer hangs a spike the height of the overhang —
   a ten-block cylinder beneath a thirty-block ledge dropped a thirty-one block stalactite.
   Such a column is fused to the ledge rather than hanging free, and is now treated as
