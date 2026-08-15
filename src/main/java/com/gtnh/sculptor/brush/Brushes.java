@@ -302,7 +302,8 @@ public final class Brushes {
      * </p>
      */
     public static void cantileverOntoGround(SculptorEditContext ctx, Vector centre, BrushParams params,
-        int[] groundBefore, int reach, int shapeHeight, int shapeTop) throws MaxChangedBlocksException {
+        int[] groundBefore, int reach, int shapeHeight, int shapeTop, double depthFactor)
+        throws MaxChangedBlocksException {
         int cx = centre.getBlockX();
         int cy = centre.getBlockY();
         int cz = centre.getBlockZ();
@@ -428,14 +429,12 @@ public final class Brushes {
                 // The brush's own height, not the height of whatever solid run this column happens
                 // to be part of. Where a shape merges into something taller, that run is the taller
                 // thing, and taking it as the shape's size lets a seven-block cylinder hang a
-                // thirty-block spike off a wall.
-                // The thickness of this column's own new material, not the brush's largest
-                // dimension. A sphere is only as deep as it is at that column -- taking its full
-                // diameter everywhere lets the thin rim hang a curtain as long as the middle.
-                // Safe to read off the run now: a column fused to anything above is excluded
-                // above, and one reaching the ground below never gets here.
-                int ownDepth = Math
-                    .max(1, Math.min(shapeHeight, terrainSurfaceY(ctx, cx + dx, cz + dz, cy) - bottom + 1));
+                // thirty-block spike off a wall. Nor is it the brush's largest dimension: a
+                // sphere is only as deep as it is at this column, and its thin rim should not
+                // hang as long a curtain as its middle. Safe to read off the run, since a column
+                // fused to anything above is excluded and one reaching the ground never gets here.
+                int thickness = Math.min(shapeHeight, terrainSurfaceY(ctx, cx + dx, cz + dz, cy) - bottom + 1);
+                int ownDepth = Math.max(1, (int) Math.round(thickness * depthFactor));
                 int floor = Math.max(wasGround, bottom - ownDepth);
 
                 int target = (int) Math.round(bottom - (bottom - floor) * eased * params.autoSmooth);

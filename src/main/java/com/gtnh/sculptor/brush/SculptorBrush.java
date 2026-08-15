@@ -187,7 +187,13 @@ public enum SculptorBrush {
                 // The highest block this brush could possibly have placed. Anything standing above
                 // it in a column was already there.
                 int shapeTop = centre.getBlockY() + ((this == CYLINDER) ? shapeHeight - 1 : params.radius);
-                Brushes.cantileverOntoGround(ctx, centre, params, groundBefore, reach, shapeHeight, shapeTop);
+                // How much of a column's own thickness the underside may fall through. A
+                // cylinder has a flat soffit to round off and can use the lot; a sphere is
+                // already curved underneath, and letting it drop by its full thickness hangs a
+                // teardrop rather than blending into anything, so it gets half.
+                double depthFactor = (this == CYLINDER) ? 1.0D : 0.5D;
+                Brushes
+                    .cantileverOntoGround(ctx, centre, params, groundBefore, reach, shapeHeight, shapeTop, depthFactor);
             } else {
                 Brushes.settleOntoGround(ctx, centre, params, groundBefore, reach);
             }

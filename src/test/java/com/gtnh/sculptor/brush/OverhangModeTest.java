@@ -440,6 +440,67 @@ public class OverhangModeTest {
     }
 
     /**
+     * A sphere is already curved underneath, so it gets a shallower droop than a flat-bottomed
+     * cylinder does.
+     *
+     * <p>
+     * Allowed to fall through its whole thickness it hangs a teardrop rather than blending into
+     * anything -- and against a vertical wall there is no nearby ground to stop it, so the depth
+     * allowance is the only thing that does.
+     * </p>
+     */
+    @Test
+    public void aSphereDroopsLessThanACylinderOfTheSameThickness() throws Exception {
+        int droopSphere = droopAgainstTower(SculptorBrush.SPHERE, 0);
+        int droopCylinder = droopAgainstTower(SculptorBrush.CYLINDER, 2 * RADIUS + 1);
+
+        assertTrue("the sphere did not droop at all, so this proves nothing", droopSphere > 0);
+        assertTrue(
+            "sphere drooped " + droopSphere + " but a cylinder of the same thickness only " + droopCylinder,
+            droopSphere < droopCylinder);
+    }
+
+    /** Deepest fall below where the shape's own underside would have been, left to itself. */
+    private static int droopAgainstTower(SculptorBrush brush, int secondary) throws Exception {
+        SculptorEditContext plain = SculptorEditContext.preview(new TowerWorld(CENTRE_Y + 40));
+        SculptorEditContext shaped = SculptorEditContext.preview(new TowerWorld(CENTRE_Y + 40));
+
+        Vector at = new Vector(RADIUS + 1, CENTRE_Y, 0);
+        brush.apply(
+            plain,
+            at,
+            new BrushParams(
+                RADIUS,
+                new BaseBlock(BlockID.STONE),
+                secondary,
+                1.0D,
+                0.0D,
+                false,
+                OverhangMode.CANTILEVER));
+        brush.apply(
+            shaped,
+            at,
+            new BrushParams(
+                RADIUS,
+                new BaseBlock(BlockID.STONE),
+                secondary,
+                1.0D,
+                1.0D,
+                false,
+                OverhangMode.CANTILEVER));
+
+        int worst = 0;
+        for (int dx = 1; dx <= 2 * RADIUS + 1; dx++) {
+            int before = bottomOf(plain, dx, 0);
+            int after = bottomOf(shaped, dx, 0);
+            if (before == Integer.MIN_VALUE || after == Integer.MIN_VALUE) continue;
+            if (before < CENTRE_Y - 80) continue;
+            worst = Math.max(worst, before - after);
+        }
+        return worst;
+    }
+
+    /**
      * A column joined to the hillside has no underside -- walking its solid run down goes through
      * the terrain to bedrock. Reading that as the shape's base once made the pass strip a hundred
      * and twenty blocks of hillside out from under itself.
