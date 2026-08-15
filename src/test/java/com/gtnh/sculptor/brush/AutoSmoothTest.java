@@ -92,6 +92,41 @@ public class AutoSmoothTest {
     }
 
     /**
+     * How deep a gap sits under this column's topmost run of solid blocks; zero if that run
+     * reaches the ground.
+     *
+     * <p>
+     * Checking only the single block under the surface is not enough and was wrong here once: a
+     * nineteen-block slab hanging over a hillside has solid blocks under its top for eighteen of
+     * them, and reports as perfectly well supported.
+     * </p>
+     */
+    private static int gapUnder(SculptorEditContext ctx, int x, int z) {
+        int y = surfaceOf(ctx, x, z);
+        if (y == Integer.MIN_VALUE) return 0;
+
+        while (y >= 0 && !ctx.isAir(new Vector(x, y, z))) y--;
+        if (y < 0) return 0;
+
+        int gap = 0;
+        while (y >= 0 && ctx.isAir(new Vector(x, y, z))) {
+            gap++;
+            y--;
+        }
+        return (y < 0) ? 0 : gap;
+    }
+
+    private static int columnsLeftHanging(SculptorEditContext ctx, int span) {
+        int hanging = 0;
+        for (int dx = -span; dx <= span; dx++) {
+            for (int dz = -span; dz <= span; dz++) {
+                if (gapUnder(ctx, dx, dz) > 0) hanging++;
+            }
+        }
+        return hanging;
+    }
+
+    /**
      * Measured against the same stroke with the pass switched off, so what is under test is the
      * smoothing rather than the cylinder it follows. Measuring against the untouched world instead
      * mostly measures the placement, which is how a 26-block "rise" got mistaken for a smoothing
@@ -121,7 +156,7 @@ public class AutoSmoothTest {
                 dugBelowGround = Math.max(dugBelowGround, ground - after);
                 raisedAboveGround = Math.max(raisedAboveGround, after - Math.max(before, ground));
 
-                if (after > 0 && smoothed.isAir(new Vector(dx, after - 1, dz))) floating++;
+                floating += (gapUnder(smoothed, dx, dz) > 0) ? 1 : 0;
             }
         }
 
@@ -137,6 +172,32 @@ public class AutoSmoothTest {
             "raised a column " + raisedAboveGround + " blocks above the ground, leash is " + LEASH,
             raisedAboveGround <= LEASH);
 
-        assertTrue("left " + floating + " surface blocks with nothing under them", floating == 0);
+        assertTrue("left " + floating + " columns hanging over a gap", floating == 0);
+    }
+
+    /**
+     * A cylinder fills upward from the height it was aimed at, across its whole disc, so on a
+     * slope the downhill half of it has nothing underneath. Smoothing cannot fix that -- it is a
+     * height map, it moves the top of a column and never looks below it -- so the shape is
+     * extended down onto the ground first.
+     *
+     * <p>
+     * Tied to the auto-smooth slider on purpose. At zero a cylinder is exactly a cylinder,
+     * hanging base and all, which is what building in the air needs.
+     * </p>
+     */
+    @Test
+    public void aShapeOnASlopeIsSettledOntoTheGroundOnlyWhenAutoSmoothIsOn() throws Exception {
+        int span = RADIUS + Math.max(3, RADIUS / 2) + 2;
+
+        int hangingWithout = columnsLeftHanging(stroke(0.0D), span);
+        int hangingWith = columnsLeftHanging(stroke(1.0D), span);
+
+        assertTrue(
+            "the test slope should leave the plain cylinder hanging, otherwise this proves nothing; got "
+                + hangingWithout,
+            hangingWithout > 50);
+
+        assertTrue("auto-smooth left " + hangingWith + " columns hanging over a gap", hangingWith == 0);
     }
 }

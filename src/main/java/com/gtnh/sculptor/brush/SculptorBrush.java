@@ -172,6 +172,12 @@ public enum SculptorBrush {
                 break;
         }
 
+        // Before smoothing, so the height map sees a shape that is standing on something rather
+        // than one hanging in the air.
+        if (fillsDownToGround() && params.autoSmooth > 0.0D) {
+            Brushes.settleOntoGround(ctx, centre, params, groundBefore, reach);
+        }
+
         if (autoSmoothable && params.autoSmooth > 0.0D) {
             // Runs through the same context, so in commit mode it lands in the same undo entry
             // and in preview mode the ghost already shows the smoothed result.
@@ -205,6 +211,19 @@ public enum SculptorBrush {
                 if (guardAutoSmooth) ctx.setGuardRemovals(false);
             }
         }
+    }
+
+    /**
+     * Whether this shape should be extended down to the ground when auto-smooth is on.
+     *
+     * <p>
+     * The solid shapes only. A hollow one filled at the base is no longer hollow. And it is tied
+     * to auto-smooth deliberately: with the slider at zero a cylinder is a cylinder, base hanging
+     * in the air and all, which is what you want when building rather than sculpting terrain.
+     * </p>
+     */
+    private boolean fillsDownToGround() {
+        return this == SPHERE || this == CYLINDER;
     }
 
     public SculptorBrush next() {

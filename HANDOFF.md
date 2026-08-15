@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 31 tests green.
+Current state: **0.4.0 in progress** on `main`, 32 tests green.
 
 ---
 
@@ -98,6 +98,17 @@ is the one thing that setting exists to prevent. `SculptorBrush.apply` turns on
 the stroke so undoing the stroke's own new material is still allowed. Tracking is opt-in because
 the set of written positions grows with the brush volume, which at the server's maximum radius is
 millions of entries.
+
+**Smoothing is a height map and cannot see underneath anything.** It moves the top of a column.
+A cylinder aimed at a slope fills upward across its whole disc, so its downhill half hangs over a
+gap — and no amount of smoothing touches that gap, because nothing in a height map is about the
+underside. `Brushes.settleOntoGround` extends the solid shapes down onto the ground before the
+smoothing pass runs, gated on the auto-smooth slider so a plain cylinder stays a true cylinder.
+
+The trap when testing this is the metric. "Is the block under the surface air" says no gap for a
+nineteen-block slab hanging in space, because eighteen of those blocks are its own. Walk the whole
+solid run down and check what is under *that*. A test using the weak version passed while two
+hundred columns hung in the air, and the fix it was guarding was reported as working.
 
 **Auto-smooth is bounded by *what* it cuts, not by *how far*.** Smoothing moves a column to the
 local mean, and next to a nineteen-block cylinder the local mean is nineteen blocks away — so the

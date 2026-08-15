@@ -19,6 +19,17 @@
 
 ### Fixes
 
+- **A sphere or cylinder placed on a slope now sits on it, with auto-smooth on.** Both fill
+  upward from the height you aimed at, across their whole footprint, so on a slope the
+  downhill part had nothing underneath and hung in the air — two hundred columns of it over
+  an eleven-block gap, in the case this was measured on. Smoothing could never fix that: it
+  is a height map, it moves the top of a column and never looks below it. The shape is now
+  extended down onto the ground first.
+
+  With the auto-smooth slider at zero nothing changes: a cylinder is exactly a cylinder,
+  hanging base and all, which is what building in the air needs. Hollow shapes are never
+  filled, since that would stop them being hollow. Neither is a shape built so far above the
+  landscape that it is clearly not standing on it.
 - **Auto-smooth tapers what you placed instead of reshaping what you placed it on.** The
   pass moved every column to its local mean, and beside a nineteen-block cylinder that mean
   is nineteen blocks away — so one stroke at full auto-smooth hollowed out the slope it was
