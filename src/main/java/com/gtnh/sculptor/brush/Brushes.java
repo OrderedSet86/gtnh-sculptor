@@ -302,7 +302,7 @@ public final class Brushes {
      * </p>
      */
     public static void cantileverOntoGround(SculptorEditContext ctx, Vector centre, BrushParams params,
-        int[] groundBefore, int reach) throws MaxChangedBlocksException {
+        int[] groundBefore, int reach, int shapeHeight) throws MaxChangedBlocksException {
         int cx = centre.getBlockX();
         int cy = centre.getBlockY();
         int cz = centre.getBlockZ();
@@ -313,7 +313,6 @@ public final class Brushes {
         double rSq = (r + 0.5D) * (r + 0.5D);
 
         int[] bottoms = new int[width * width];
-        int[] tops = new int[width * width];
         int[] ground = new int[width * width];
         int[] fromAnchor = new int[width * width];
         boolean[] onGround = new boolean[width * width];
@@ -340,7 +339,6 @@ public final class Brushes {
                 while (bottom > 0 && isGround(ctx, cx + dx, bottom - 1, cz + dz)) bottom--;
 
                 bottoms[index] = bottom;
-                tops[index] = top;
                 ground[index] = wasGround;
 
                 // A column joined to the hillside has no underside to speak of -- walking down its
@@ -355,7 +353,7 @@ public final class Brushes {
                 // anchor at all and is left as the flat slab it was drawn as. A neighbouring
                 // column whose own material already stood as high as this one's underside is
                 // holding it up just as surely as ground would.
-                if (onGround[index] || touchesSolidBeside(groundBefore, reach, dx, dz, bottom, top - bottom + 1)) {
+                if (onGround[index] || touchesSolidBeside(groundBefore, reach, dx, dz, bottom, shapeHeight)) {
                     fromAnchor[index] = 0;
                     frontier.add(index);
                 }
@@ -422,8 +420,11 @@ public final class Brushes {
                 // measured at eighty blocks for a ten-block cylinder placed off a tower, which is
                 // the other mode's job, not this one's. Ground nearer than that is still reached,
                 // so a shape sitting on a slope still merges into it.
-                int reachDown = Math.max(1, tops[index] - bottom + 1);
-                int floor = Math.max(wasGround, bottom - reachDown);
+                // The brush's own height, not the height of whatever solid run this column happens
+                // to be part of. Where a shape merges into something taller, that run is the taller
+                // thing, and taking it as the shape's size lets a seven-block cylinder hang a
+                // thirty-block spike off a wall.
+                int floor = Math.max(wasGround, bottom - Math.max(1, shapeHeight));
 
                 int target = (int) Math.round(bottom - (bottom - floor) * eased * params.autoSmooth);
                 if (target < floor) target = floor;
