@@ -10,7 +10,11 @@ command and hope. Sculptor adds the layer that modern creative-building tools ha
 - **Terrain brushes with falloff** — raise, lower, flatten, erode, melt, tapering from the
   centre of the stroke so it blends into surrounding ground instead of stamping a shape.
 - **Trees and clearing** — plant the biome's own tree species, or strip foliage and trunks.
-- **An in-game editor panel** — brush picker, radius/strength sliders, material picker.
+- **Auto-smooth** — blends a placed shape into the ground it lands in, and settles the part
+  of it that would otherwise hang over a slope. Two ways to do that, chosen in the panel:
+  fill it down to the ground, or leave it as a cantilever and round its underside.
+- **An in-game editor panel** — brush picker, radius/strength sliders, material picker,
+  placement mask, auto-smooth and overhang handling.
 - **A cinematic camera** — free camera decoupled from the player, with keyframed paths.
 
 ## Installing

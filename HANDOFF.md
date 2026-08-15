@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 49 tests green.
+Current state: **0.4.0 ready to release**, not yet pushed. 49 tests green.
 
 ---
 

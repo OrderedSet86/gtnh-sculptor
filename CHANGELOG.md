@@ -2,118 +2,79 @@
 
 ## 0.4.0
 
+Mostly about auto-smooth, which turned out to be doing several things it should not.
+
+### Added
+
+- **Shapes placed on a slope no longer hang in mid-air, and there is a button for what
+  should happen instead.** A sphere or cylinder fills upward from the height you aimed at,
+  across its whole footprint, so on a slope its downhill part had nothing underneath it —
+  two hundred columns over an eleven-block gap, in one measured case. Smoothing could never
+  reach that: it is a height map, it moves the top of a column and never looks below one.
+
+  With auto-smooth on, the panel's new **Overhang** button chooses between two answers.
+  *Fill to ground* extends the shape down onto the terrain, so it becomes part of the hill
+  and its top tapers into the ground around it. *Cantilever* leaves the overhang hanging and
+  sweeps its underside down to meet the slope instead, closing the void behind a free edge
+  that keeps its full height — a ledge rather than a plateau. Cantilever also leaves the face
+  you drew exactly as you drew it, and blends the surrounding ground by adding to it rather
+  than cutting it away.
+
+  Both take their support from whatever the shape touches, including something standing
+  beside it rather than beneath it, so an arch spanning out from its leg is handled. Neither
+  disturbs ground far from what you placed. With the slider at zero nothing happens at all —
+  a cylinder is exactly a cylinder, hanging base and all, which is what building in the air
+  needs. Hollow shapes are never filled, since that would stop them being hollow.
+
+### Changed
+
+- **The editor panel is taller** to fit the overhang button.
+
 ### Performance
 
-- **The ghost preview is much cheaper to rebuild.** Dragging a large brush across terrain
-  re-runs the brush and re-bakes its geometry up to twenty times a second, and each rebuild
-  was allocating hundreds of thousands of short-lived objects — enough to show as a frame
-  rate drop while the crosshair moved. Three things changed. The pending changes are
-  unpacked into an array over their bounding box for the bake, so the thirteen to twenty
-  questions `RenderBlocks` asks about each block are array reads rather than allocating a
-  key and probing a map of tens of thousands of entries. Blocks buried inside the brush are
-  skipped, since they emit nothing visible but used to pay full price to discover that —
-  about four blocks in five of a sphere. And the default placement mask no longer reads the
-  block it is about to overwrite, an answer it discards.
+- **The ghost preview is much cheaper to rebuild.** Dragging a large brush re-runs it and
+  re-bakes its geometry up to twenty times a second, and each rebuild was allocating
+  hundreds of thousands of short-lived objects — enough to show as a frame rate drop while
+  the crosshair moved. The pending changes are now unpacked into an array for the bake
+  rather than probed out of a map; blocks buried inside the brush are skipped, since they
+  emit nothing visible but used to pay full price to find that out — about four in five of a
+  sphere; and the default placement mask no longer reads the block it is about to overwrite,
+  an answer it discards.
 
-  Standing still costs the same as before: this is the rebuild, not the draw.
+  Standing still costs the same as before. This is the rebuild, not the draw.
 
 ### Fixes
 
-- **A sphere or cylinder placed on a slope now sits on it, with auto-smooth on.** Both fill
-  upward from the height you aimed at, across their whole footprint, so on a slope the
-  downhill part had nothing underneath and hung in the air — two hundred columns of it over
-  an eleven-block gap, in the case this was measured on. Smoothing could never fix that: it
-  is a height map, it moves the top of a column and never looks below it. The shape is now
-  extended down onto the ground first.
+- **Auto-smooth tapers what you placed instead of reshaping what you placed it on.** It
+  moved every column to its local mean, and beside a nineteen-block cylinder that mean is
+  nineteen blocks away, so one stroke at full strength hollowed out the slope it was dropped
+  into and raised pillars out of the ground below.
 
-  It follows the drop however deep it is. What decides whether a shape is settled is
-  whether any part of it is resting on the terrain, not how far the ground happens to be
-  below — so a shape dug into a cliff edge follows that cliff all the way down, and one
-  floating in clear sky, touching nothing, is left exactly as it was drawn.
+  Shaving the stroke's own new material back down is the taper, and is not limited: a shape
+  standing proud of a hillside follows the slope all the way to ground level. Cutting into
+  ground that was already there, or raising a column above where it stood, is limited to a
+  third of the brush radius. On a radius-12 cylinder over a rough slope that is a
+  sixteen-block taper with at most four blocks of hillside disturbed; it used to be sixteen
+  blocks dug out and fourteen blocks of pillar raised.
 
-  **There are two ways to want this, so there is a button for it.** "Fill to ground" is the
-  above: the shape becomes part of the hill, and its top tapers down into the terrain around
-  it. "Cantilever" leaves the overhang hanging and sweeps its underside down to meet the
-  slope instead, closing the void behind a free edge that keeps its full height — a ledge
-  rather than a plateau. That mode also leaves the face you drew exactly as you drew it and
-  blends only the ground around it, since a shape kept for its shape should not then have
-  that shape worked over.
-
-  The cantilever takes its support from whatever the shape touches, not only from what is
-  underneath it. An arch is built by spanning out from something standing *beside* the new
-  piece, and while support meant "the ground below" a span like that found none at all and
-  was left as the flat slab it was drawn as — the higher the span, the more certainly. It
-  also curves down by about the shape's own height and no further: chasing whatever happens
-  to be below turns a soffit into a curtain wall, which is what the other mode is for. A
-  piece placed touching nothing at all is still left exactly as drawn.
-
-  Cantilever mode also no longer drags distant ground up to meet the shape. A height map
-  spans a vertical face as though it were a slope, so ground at the foot of a leg is a
-  column or two from the leg's top as far as the averaging is concerned — and a shape placed
-  at the top left a ring of raised earth around the bottom, forty blocks away from anything
-  the brush touched. Ground that far under the shape is not a seam and is left alone.
-
-  Cantilever mode no longer deletes terrain that was already there. It keeps the shape you
-  drew, so cutting the landscape around it to meet that shape is the wrong half of the
-  bargain: on a rough cliff face it was trimming every bump within reach by a block or two,
-  over a hundred blocks for a single stroke, scattered and nowhere near the shape. It blends
-  by adding now. Filling to ground is unchanged and still reshapes freely — there the shape
-  is meant to become part of the hill.
-
-  **A shape cut into a rock face now gets an underside at all.** The pass worked out where
-  the shape was by looking at the world after placing it, which only reads correctly where
-  the shape hangs in clear air — merged into a cliff, under a ledge or down a crevice, it
-  measured the cliff instead and either used the wrong thickness or skipped the column as
-  part of the terrain. Measured on a real cliff face, a cylinder came out with a droop of
-  `0 4 0 0 0 0 0 0 0 0 0 0 0`: nothing, across the whole disc. It asks the brush where it
-  put its blocks now, so being buried in rock changes nothing.
-
-  That also settles the stalactite under an overhanging ledge — a ten-block cylinder
-  beneath a thirty-block ledge used to hang a thirty-one block spike, because the ledge's
-  height was being read as the shape's.
-
-  Support counts when it is near enough for the underside to curve down to it, rather than
-  only when it comes right up to the shape's base — a shape placed at a cliff edge usually
-  stands a block or two proud of the top it springs from, and requiring an exact meeting
-  switched the whole pass off for the commonest placement there is.
-
-  With the auto-smooth slider at zero nothing changes: a cylinder is exactly a cylinder,
-  hanging base and all, which is what building in the air needs. Hollow shapes are never
-  filled, since that would stop them being hollow.
-- **Auto-smooth tapers what you placed instead of reshaping what you placed it on.** The
-  pass moved every column to its local mean, and beside a nineteen-block cylinder that mean
-  is nineteen blocks away — so one stroke at full auto-smooth hollowed out the slope it was
-  dropped into and raised pillars out of the ground below it.
-
-  The two directions are now bounded differently, because they are not the same act. Shaving
-  the stroke's own new material back down is the taper and is not bounded at all: a cylinder
-  standing proud of a hillside follows the slope all the way to ground level, however far
-  that is. Cutting *into* ground that was already there, or raising a column above where it
-  stood, is limited to a third of the brush radius. On a radius-12 cylinder over a rough
-  slope that is a sixteen-block taper with at most four blocks of the hillside disturbed;
-  it used to be sixteen blocks of hillside dug out and fourteen blocks of pillar.
-
-  The smooth brush itself is untouched and stays unbounded — you asked for that one.
-- **Removal markers no longer shimmer against the terrain they mark.** The red boxes sat
-  just inside their block and relied on a polygon offset to pull them in front, which buys a
-  distance-dependent amount of depth — too little up close, far too much at range, and a
-  pixel-by-pixel coin toss in between. They enclose the block now.
+  The smooth brush itself is unchanged and stays unlimited.
 - **"Air only" now binds the auto-smooth pass.** The placement mask governs building rather
-  than carving, so that choosing "air only" does not silently disable every brush that
-  removes blocks. Auto-smooth is the exception: it is a pass you did not ask for, and it
-  lowers columns, so it was eating the ground around whatever had just been placed — the
-  one thing that setting exists to prevent. It may still cut back material the same stroke
-  placed, which was never protected ground.
+  than carving, so choosing "air only" does not disable every brush that removes blocks.
+  Auto-smooth is the exception: it is a pass you did not ask for, and it lowers columns, so
+  it was eating the ground around whatever had just been placed — the one thing that setting
+  exists to prevent. It may still cut back material the same stroke placed.
 - **Smoothing no longer strands material in mid-air.** A ledge with nothing under it still
   reads as a surface to the height map, so smoothing cleared the gap beneath it and stamped
-  a fresh surface block into thin air, one per column — a floating shelf. There is no
-  connected surface there to smooth, so those columns are now left exactly as they are.
-  This is what produced floating islands when a sphere was dropped into a steep hillside
-  with auto-smooth turned up.
+  a fresh surface block into thin air, one per column. That is where the floating islands
+  came from when a sphere was dropped into a steep hillside with auto-smooth turned up.
 - **Foliage removal strips modded tree trunks.** It matched `BlockLog`, and Biomes O' Plenty
   logs extend `Block` directly, so every BOP trunk read as ordinary terrain and the brush
-  walked past it. Trunks are now identified by the `logWood` ore dictionary entry as well,
-  which is the thing mods actually agree on, with Forge's `isWood` as a further fallback.
+  walked past it. Trunks are identified by the `logWood` ore dictionary entry now, which is
+  what mods actually agree on, with Forge's `isWood` as a further fallback.
+- **Removal markers no longer shimmer against the terrain they mark.** The red boxes sat
+  just inside their block and relied on a polygon offset to pull them in front, which buys a
+  distance-dependent amount of depth: too little up close, far too much at range, and a
+  pixel-by-pixel coin toss in between. They enclose the block now.
 
 
 ## 0.3.1
