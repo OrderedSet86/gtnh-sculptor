@@ -47,6 +47,11 @@
   to be below turns a soffit into a curtain wall, which is what the other mode is for. A
   piece placed touching nothing at all is still left exactly as drawn.
 
+  A shape placed *under* an overhang no longer hangs a spike the height of the overhang —
+  a ten-block cylinder beneath a thirty-block ledge dropped a thirty-one block stalactite.
+  Such a column is fused to the ledge rather than hanging free, and is now treated as
+  support.
+
   Support counts when it is near enough for the underside to curve down to it, rather than
   only when it comes right up to the shape's base — a shape placed at a cliff edge usually
   stands a block or two proud of the top it springs from, and requiring an exact meeting

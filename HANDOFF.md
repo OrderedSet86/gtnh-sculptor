@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 42 tests green.
+Current state: **0.4.0 in progress** on `main`, 43 tests green.
 
 ---
 
@@ -143,6 +143,22 @@ The tolerance on that test is the fiddly part, and both ends of it are wrong:
 
 So it is bounded by the same distance the sweep itself is allowed — the shape's own height. Support
 near enough for the curve to reach counts; support further away does not.
+
+**The height probe can walk underneath an overhang without seeing it.** `terrainSurfaceY` climbs
+only when it starts inside ground; otherwise it descends. `sampleHeights` carries a running probe
+along each row, so where the probe is in open air it drops to the valley floor and keeps going —
+past a ledge overhead, which it never looks up at. A column fused to that ledge therefore reports
+the valley as its ground, reads as free-hanging material as tall as the ledge, and the cantilever
+hangs a spike the height of it. Ten-block cylinder under a thirty-block ledge, thirty-one block
+spike.
+
+Two things guard it. A column whose solid run rises above anything the brush could have placed is
+treated as anchored, not as overhang — that is what `shapeTop` is for. And the sweep depth comes
+from the brush's declared height rather than from the run, since a shape fused to something taller
+would otherwise take the taller thing's size as its own. The second is redundant for cylinders once
+the first is in place (a non-fused cylinder column's run *is* its height), so do not be surprised
+when mutating it alone changes nothing; it is not redundant for spheres, whose run varies per
+column, and that case has no test.
 
 The sweep is also bounded to about the shape's own height. Following the ground however far away it
 is turns a soffit into a curtain wall — eighty blocks, measured, for a ten-block cylinder spanning

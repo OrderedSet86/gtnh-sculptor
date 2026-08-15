@@ -370,6 +370,76 @@ public class OverhangModeTest {
     }
 
     /**
+     * A ledge overhead that the shape is placed beneath, with its support lower down to one side.
+     *
+     * <p>
+     * The support's top is deliberately below the shape's base, so the height probe walking along
+     * a row drops to the valley rather than carrying the ledge's height with it. That is what
+     * makes a column fused to the ledge report the valley floor as its ground.
+     * </p>
+     */
+    private static class RoofWorld extends NullWorld {
+
+        static final int ROOF_TOP = CENTRE_Y + 30;
+
+        @Override
+        public BaseBlock getBlock(Vector position) {
+            int x = position.getBlockX();
+            int y = position.getBlockY();
+
+            if (x <= 0 && y <= CENTRE_Y - 3) return new BaseBlock(BlockID.STONE);
+            if (x <= 6 && y >= CENTRE_Y + HEIGHT && y <= ROOF_TOP) return new BaseBlock(BlockID.STONE);
+            return new BaseBlock(y <= CENTRE_Y - 80 ? BlockID.STONE : BlockID.AIR);
+        }
+
+        @Override
+        public BaseBlock getLazyBlock(Vector position) {
+            return getBlock(position);
+        }
+    }
+
+    /**
+     * A shape placed under an overhang must not hang a spike the height of the overhang.
+     *
+     * <p>
+     * Two separate mistakes met here. The curve's depth was measured as the contiguous solid run
+     * in the column, which for a shape fused to a ledge is the ledge; and such a column was read
+     * as free-hanging at all, because the height probe walks along a row and can pass underneath
+     * an overhang without seeing it, reporting the valley floor as the ground beneath it. A
+     * ten-block cylinder under a thirty-block ledge dropped a thirty-one block spike.
+     * </p>
+     */
+    @Test
+    public void aShapePlacedUnderALedgeDoesNotHangASpikeTheHeightOfIt() throws Exception {
+        SculptorEditContext ctx = SculptorEditContext.preview(new RoofWorld());
+        SculptorBrush.CYLINDER.apply(
+            ctx,
+            new Vector(8, CENTRE_Y, 0),
+            new BrushParams(RADIUS, new BaseBlock(BlockID.STONE), HEIGHT, 1.0D, 1.0D, false, OverhangMode.CANTILEVER));
+
+        int deepest = CENTRE_Y;
+        boolean sweptSomewhere = false;
+
+        for (int dx = -RADIUS + 8; dx <= RADIUS + 8; dx++) {
+            int bottom = bottomOf(ctx, dx, 0);
+            if (bottom == Integer.MIN_VALUE || bottom < CENTRE_Y - 79) continue;
+
+            // Columns fused to the ledge overhead are support, not overhang.
+            if (dx >= 1 && dx <= 6) {
+                assertEquals("column " + dx + " is fused to the ledge and should be left alone", CENTRE_Y, bottom);
+            }
+
+            if (bottom < CENTRE_Y) sweptSomewhere = true;
+            deepest = Math.min(deepest, bottom);
+        }
+
+        assertTrue("nothing was shaped at all, so this proves nothing", sweptSomewhere);
+        assertTrue(
+            "the underside dropped " + (CENTRE_Y - deepest) + " blocks under a " + HEIGHT + "-block shape",
+            CENTRE_Y - deepest <= HEIGHT);
+    }
+
+    /**
      * A column joined to the hillside has no underside -- walking its solid run down goes through
      * the terrain to bedrock. Reading that as the shape's base once made the pass strip a hundred
      * and twenty blocks of hillside out from under itself.

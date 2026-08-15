@@ -302,7 +302,7 @@ public final class Brushes {
      * </p>
      */
     public static void cantileverOntoGround(SculptorEditContext ctx, Vector centre, BrushParams params,
-        int[] groundBefore, int reach, int shapeHeight) throws MaxChangedBlocksException {
+        int[] groundBefore, int reach, int shapeHeight, int shapeTop) throws MaxChangedBlocksException {
         int cx = centre.getBlockX();
         int cy = centre.getBlockY();
         int cz = centre.getBlockZ();
@@ -341,10 +341,15 @@ public final class Brushes {
                 bottoms[index] = bottom;
                 ground[index] = wasGround;
 
-                // A column joined to the hillside has no underside to speak of -- walking down its
-                // solid run goes straight through the terrain to bedrock. Those columns are the
-                // anchor the curve springs from, and are never themselves touched.
-                onGround[index] = bottom <= wasGround;
+                // A column joined to the terrain has no underside to speak of, and is the anchor
+                // the curve springs from rather than something to shape. That happens two ways:
+                // its run continues down through the hillside to bedrock, or it continues *up*
+                // into rock the shape was placed beneath. The second one is easy to miss, because
+                // the height probe walks along a row and can pass underneath an overhang without
+                // ever seeing it -- reporting the valley floor as the ground for a column that is
+                // fused to a ledge overhead. The column then reads as free-hanging material as
+                // tall as the ledge, and hangs a spike the height of it.
+                onGround[index] = bottom <= wasGround || top > shapeTop;
                 if (!onGround[index]) anyOverhang = true;
 
                 // Support is not only what is underneath. An arch is built by spanning out from

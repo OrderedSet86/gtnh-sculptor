@@ -184,7 +184,10 @@ public enum SculptorBrush {
                 // The shape's own vertical extent, which is what bounds the curve. A cylinder
                 // knows its height; a sphere is as tall as it is wide.
                 int shapeHeight = (this == CYLINDER) ? Math.max(1, params.secondary) : (2 * params.radius + 1);
-                Brushes.cantileverOntoGround(ctx, centre, params, groundBefore, reach, shapeHeight);
+                // The highest block this brush could possibly have placed. Anything standing above
+                // it in a column was already there.
+                int shapeTop = centre.getBlockY() + ((this == CYLINDER) ? shapeHeight - 1 : params.radius);
+                Brushes.cantileverOntoGround(ctx, centre, params, groundBefore, reach, shapeHeight, shapeTop);
             } else {
                 Brushes.settleOntoGround(ctx, centre, params, groundBefore, reach);
             }
