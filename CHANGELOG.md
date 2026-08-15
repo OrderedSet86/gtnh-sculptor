@@ -2,6 +2,21 @@
 
 ## 0.4.0
 
+### Performance
+
+- **The ghost preview is much cheaper to rebuild.** Dragging a large brush across terrain
+  re-runs the brush and re-bakes its geometry up to twenty times a second, and each rebuild
+  was allocating hundreds of thousands of short-lived objects — enough to show as a frame
+  rate drop while the crosshair moved. Three things changed. The pending changes are
+  unpacked into an array over their bounding box for the bake, so the thirteen to twenty
+  questions `RenderBlocks` asks about each block are array reads rather than allocating a
+  key and probing a map of tens of thousands of entries. Blocks buried inside the brush are
+  skipped, since they emit nothing visible but used to pay full price to discover that —
+  about four blocks in five of a sphere. And the default placement mask no longer reads the
+  block it is about to overwrite, an answer it discards.
+
+  Standing still costs the same as before: this is the rebuild, not the draw.
+
 ### Fixes
 
 - **"Air only" now binds the auto-smooth pass.** The placement mask governs building rather

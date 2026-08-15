@@ -41,6 +41,11 @@ public enum PlacementMask {
         public boolean allows(BaseBlock existing, BaseBlock material) {
             return true;
         }
+
+        @Override
+        public boolean inspectsExisting() {
+            return false;
+        }
     },
 
     /** Build into empty space only, leaving existing terrain and structures untouched. */
@@ -84,6 +89,20 @@ public enum PlacementMask {
      * @param material the brush's chosen material
      */
     public abstract boolean allows(BaseBlock existing, BaseBlock material);
+
+    /**
+     * Whether {@link #allows} actually looks at what is in the way.
+     *
+     * <p>
+     * Reading the existing block costs three chunk lookups, a registry probe, a tile-entity
+     * lookup and an allocation, and Java evaluates the argument whether or not the mask wants it.
+     * The default mask discards it, so a brush placing tens of thousands of blocks was paying all
+     * of that for every one of them and throwing the answer away.
+     * </p>
+     */
+    public boolean inspectsExisting() {
+        return true;
+    }
 
     public PlacementMask next() {
         PlacementMask[] all = values();

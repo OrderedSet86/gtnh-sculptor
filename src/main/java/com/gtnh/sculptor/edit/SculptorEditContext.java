@@ -178,11 +178,17 @@ public class SculptorEditContext {
         // carves -- erode, lower, foliage removal -- since none of them can write air over a
         // block that is by definition not air.
         boolean placing = block.getType() != BlockID.AIR;
-        BlockVector key = position.toBlockVector();
 
-        boolean ours = written != null && written.contains(key);
-        if (placing || (guardRemovals && !ours)) {
-            if (!placementMask.allows(getBlock(position), material)) return false;
+        // Only materialised when something is going to look at it. A brush writes tens of
+        // thousands of blocks and toBlockVector allocates every time it is called.
+        BlockVector key = (written != null) ? position.toBlockVector() : null;
+        boolean ours = key != null && written.contains(key);
+
+        // inspectsExisting is checked first so the read is skipped under the default mask, which
+        // discards the answer -- see PlacementMask.inspectsExisting.
+        if ((placing || (guardRemovals && !ours)) && placementMask.inspectsExisting()
+            && !placementMask.allows(getBlock(position), material)) {
+            return false;
         }
 
         if (buffer != null) {
@@ -190,7 +196,7 @@ public class SculptorEditContext {
         } else {
             session.setBlock(position, block);
         }
-        if (written != null) written.add(key);
+        if (key != null) written.add(key);
         changeCount++;
         return true;
     }

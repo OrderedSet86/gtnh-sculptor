@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 27 tests green.
+Current state: **0.4.0 in progress** on `main`, 30 tests green.
 
 ---
 
@@ -154,6 +154,21 @@ swapping the block for real and swapping it back: that lands in the change set t
 "applied N blocks" count, and is rejected outright by an air-only or replace-selected placement
 mask — silently reinstating the bug.
 
+**The bake is the expensive part of previewing, not the draw.** Rebuilding happens when the
+crosshair moves to a new block or a setting changes — up to 20 times a second while dragging —
+and it runs inline inside `RenderWorldLastEvent`, so its whole cost lands in one frame. The draw
+itself is two VBO binds. If someone reports the preview costing frames, the first question is
+whether it persists while standing still: if it does, the culprit is the draw state
+(`GL_CULL_FACE` off, blending on, and unbounded overdraw in x-ray mode) and nothing in this
+paragraph applies.
+
+`PreviewWorld` unpacks the change set into an array over its bounding box for exactly this reason.
+`RenderBlocks` asks 13-20 questions per block — seven brightness lookups, six
+`shouldSideBeRendered`, the bounds and the colour — and each one used to allocate a `BlockVector`
+and probe a map with a virtual-call-heavy `equals`. Half a million allocations per bake, twenty
+times a second. Keep lookups on that path allocation-free. The map is still there as a fallback
+for a change set too spread out to unpack.
+
 **Do not mixin Angelica's terrain renderer.** It `@Overwrite`s `RenderGlobal.sortAndRender`,
 `clipRenderersByFrustum`, `markBlocksForUpdate` and `getDebugInfoRenders` at priority 900. Draw
 from `RenderWorldLastEvent` instead, which is also why previewing costs zero chunk rebuilds.
@@ -245,9 +260,18 @@ outright, unlike a 404 which falls through.
   gone at the next restart.
 - **Preview at long range can be stale** where chunks are not loaded client-side. The brush reaches
   160 blocks; render distance is often less.
-- **The ghost bake runs on the render thread.** Off-thread is the obvious optimisation, but mod
-  `ISBRH` implementations are not thread-safe — it needs `TessellatorManager.isOnMainThread()` and
-  `AngelicaBlockSafetyRegistry` gating.
+- **The ghost bake runs on the render thread.** Off-thread is the obvious next optimisation, but
+  mod `ISBRH` implementations are not thread-safe — it needs `TessellatorManager.isOnMainThread()`
+  and `AngelicaBlockSafetyRegistry` gating.
+- **The brush run still allocates per block.** Roughly nine objects for every `setBlock`, mostly
+  `Vector` and `BlockVector` on the way through `SculptorEditContext` and `PreviewBuffer`, three
+  of them the same coordinate converted three times. The bake was the larger half and has been
+  dealt with; this half has not. Fixing it means touching the map's key type, which is shared with
+  the commit path, so measure before assuming it is worth the risk.
+- **The ghost draws with backface culling off** and blending on, with depth writes disabled and
+  optionally no depth test at all. That is at least double the fragment work over screen coverage
+  that grows with the square of the radius. Never measured; it is the thing to look at if the
+  preview costs frames while standing still.
 - **Blueprints are not implemented.**
 
 ---

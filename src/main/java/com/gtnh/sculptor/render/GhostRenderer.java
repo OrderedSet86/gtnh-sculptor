@@ -175,9 +175,13 @@ public class GhostRenderer {
         originZ = (int) Math.floor(view.posZ);
 
         PreviewWorld world = new PreviewWorld(mc.theWorld, pending);
+        sawRemovals = false;
         additionMesh = bakeAdditions(world);
-        removalMesh = bakeRemovals(mc);
+        removalMesh = sawRemovals ? bakeRemovals(mc) : null;
     }
+
+    /** Set while baking additions, so the removal pass runs only when there is one to draw. */
+    private boolean sawRemovals;
 
     private IVertexArrayObject bakeAdditions(PreviewWorld world) {
         RenderBlocks renderBlocks = new RenderBlocks(world);
@@ -192,13 +196,24 @@ public class GhostRenderer {
             tes.setTranslation(-originX, -originY, -originZ);
 
             for (Map.Entry<BlockVector, BaseBlock> entry : pending.entrySet()) {
+                if (entry.getValue()
+                    .getType() == BlockID.AIR) {
+                    // Noted here so the removal pass can be skipped outright for a brush that
+                    // only places, rather than walking the whole change set to find nothing.
+                    sawRemovals = true;
+                    continue;
+                }
+
                 Block block = Block.getBlockById(
                     entry.getValue()
                         .getType());
                 if (block == null || block.getMaterial() == Material.air) continue;
 
                 BlockVector pos = entry.getKey();
-                if (renderBlocks.renderBlockByRenderType(block, pos.getBlockX(), pos.getBlockY(), pos.getBlockZ())) {
+                int x = pos.getBlockX(), y = pos.getBlockY(), z = pos.getBlockZ();
+                if (world.isHiddenByPendingNeighbours(x, y, z)) continue;
+
+                if (renderBlocks.renderBlockByRenderType(block, x, y, z)) {
                     quads++;
                 }
             }
