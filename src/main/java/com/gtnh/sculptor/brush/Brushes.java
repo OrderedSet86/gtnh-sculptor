@@ -429,7 +429,14 @@ public final class Brushes {
                 // to be part of. Where a shape merges into something taller, that run is the taller
                 // thing, and taking it as the shape's size lets a seven-block cylinder hang a
                 // thirty-block spike off a wall.
-                int floor = Math.max(wasGround, bottom - Math.max(1, shapeHeight));
+                // The thickness of this column's own new material, not the brush's largest
+                // dimension. A sphere is only as deep as it is at that column -- taking its full
+                // diameter everywhere lets the thin rim hang a curtain as long as the middle.
+                // Safe to read off the run now: a column fused to anything above is excluded
+                // above, and one reaching the ground below never gets here.
+                int ownDepth = Math
+                    .max(1, Math.min(shapeHeight, terrainSurfaceY(ctx, cx + dx, cz + dz, cy) - bottom + 1));
+                int floor = Math.max(wasGround, bottom - ownDepth);
 
                 int target = (int) Math.round(bottom - (bottom - floor) * eased * params.autoSmooth);
                 if (target < floor) target = floor;
