@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 32 tests green.
+Current state: **0.4.0 in progress** on `main`, 35 tests green.
 
 ---
 
@@ -104,6 +104,13 @@ A cylinder aimed at a slope fills upward across its whole disc, so its downhill 
 gap — and no amount of smoothing touches that gap, because nothing in a height map is about the
 underside. `Brushes.settleOntoGround` extends the solid shapes down onto the ground before the
 smoothing pass runs, gated on the auto-smooth slider so a plain cylinder stays a true cylinder.
+
+What decides whether a shape is settled is whether **any** of its footprint is resting on terrain,
+not how far below the ground is. A distance limit stood in for that at first, at twice the radius,
+and it is the kind of stand-in that looks fine in a test and fails in the world: the same hillside
+that settled correctly with a small brush went back to floating with a large one, the threshold
+moving with the radius — 24 blocks, then 32, then 40. If you find yourself reaching for a distance
+here, you are approximating "is it standing on something", so test that instead.
 
 The trap when testing this is the metric. "Is the block under the surface air" says no gap for a
 nineteen-block slab hanging in space, because eighteen of those blocks are its own. Walk the whole

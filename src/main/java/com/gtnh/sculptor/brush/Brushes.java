@@ -222,10 +222,14 @@ public final class Brushes {
      * </p>
      *
      * <p>
-     * Only for the solid shapes. Filling the base of a hollow one would defeat the point of it
-     * being hollow. And only where the ground is close enough below to be something the shape is
-     * plausibly standing on -- a cylinder built high in the sky is a cylinder, not a column
-     * reaching down to the landscape.
+     * Only for the solid shapes -- filling the base of a hollow one would defeat the point of it
+     * being hollow -- and only when the shape is resting on the terrain somewhere in its
+     * footprint. That last test is what separates a shape placed <em>on</em> the landscape from
+     * one built <em>over</em> it: a cylinder floating in clear sky touches nothing and is left
+     * exactly as it was drawn, while one dug into a hillside follows that hillside down however
+     * far it falls away. A plain distance limit stood in for this at first and was wrong -- it
+     * cut out at twice the radius, so the same slope that worked with a small brush went back to
+     * floating with a large one.
      * </p>
      */
     public static void settleOntoGround(SculptorEditContext ctx, Vector centre, BrushParams params, int[] groundBefore,
@@ -234,31 +238,47 @@ public final class Brushes {
         int cy = centre.getBlockY();
         int cz = centre.getBlockZ();
         int r = params.radius;
-        int width = 2 * reach + 1;
+        int width = 2 * r + 1;
+        int reachWidth = 2 * reach + 1;
 
         double rSq = (r + 0.5D) * (r + 0.5D);
-        int maxDrop = 2 * r;
+
+        // Underside of the material standing in each column, and the ground that was under it.
+        int[] bottoms = new int[width * width];
+        int[] ground = new int[width * width];
+        boolean resting = false;
 
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
+                int index = (dz + r) * width + (dx + r);
+                bottoms[index] = Integer.MIN_VALUE;
+
                 if (dx * dx + (double) dz * dz > rSq) continue;
 
-                int wasGround = groundBefore[(dz + reach) * width + (dx + reach)];
+                int wasGround = groundBefore[(dz + reach) * reachWidth + (dx + reach)];
+                ground[index] = wasGround;
                 if (wasGround == Integer.MIN_VALUE) continue;
 
-                int x = cx + dx;
-                int z = cz + dz;
-
-                // The underside of whatever is standing in this column.
-                int bottom = terrainSurfaceY(ctx, x, z, cy);
+                int bottom = terrainSurfaceY(ctx, cx + dx, cz + dz, cy);
                 if (bottom == Integer.MIN_VALUE) continue;
-                while (bottom > 0 && isGround(ctx, x, bottom - 1, z)) bottom--;
+                while (bottom > 0 && isGround(ctx, cx + dx, bottom - 1, cz + dz)) bottom--;
 
-                if (bottom <= wasGround) continue;
-                if (bottom - wasGround > maxDrop) continue;
+                bottoms[index] = bottom;
+                if (bottom <= wasGround) resting = true;
+            }
+        }
+
+        if (!resting) return;
+
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                int index = (dz + r) * width + (dx + r);
+                int bottom = bottoms[index];
+                int wasGround = ground[index];
+                if (bottom == Integer.MIN_VALUE || wasGround == Integer.MIN_VALUE) continue;
 
                 for (int y = bottom - 1; y > wasGround; y--) {
-                    ctx.setBlock(x, y, z, params.material);
+                    ctx.setBlock(cx + dx, y, cz + dz, params.material);
                 }
             }
         }

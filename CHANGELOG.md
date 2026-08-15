@@ -26,10 +26,14 @@
   is a height map, it moves the top of a column and never looks below it. The shape is now
   extended down onto the ground first.
 
+  It follows the drop however deep it is. What decides whether a shape is settled is
+  whether any part of it is resting on the terrain, not how far the ground happens to be
+  below — so a shape dug into a cliff edge follows that cliff all the way down, and one
+  floating in clear sky, touching nothing, is left exactly as it was drawn.
+
   With the auto-smooth slider at zero nothing changes: a cylinder is exactly a cylinder,
   hanging base and all, which is what building in the air needs. Hollow shapes are never
-  filled, since that would stop them being hollow. Neither is a shape built so far above the
-  landscape that it is clearly not standing on it.
+  filled, since that would stop them being hollow.
 - **Auto-smooth tapers what you placed instead of reshaping what you placed it on.** The
   pass moved every column to its local mean, and beside a nineteen-block cylinder that mean
   is nineteen blocks away — so one stroke at full auto-smooth hollowed out the slope it was
