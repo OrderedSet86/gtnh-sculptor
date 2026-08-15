@@ -99,20 +99,35 @@ the stroke so undoing the stroke's own new material is still allowed. Tracking i
 the set of written positions grows with the brush volume, which at the server's maximum radius is
 millions of entries.
 
-**Auto-smooth must be capped; the smooth brush must not be.** They are the same code, and the
-difference is who asked. Smoothing moves a column to the local mean, and next to a nineteen-block
-cylinder the local mean is nineteen blocks away — so the pass that was supposed to soften a seam
-hollowed out the hillside instead, and left the columns it could not cut standing as pillars.
-`SculptorBrush.apply` passes `maxStep` for that reason. Beware of measuring this by eye: the first
-attempt compared the smoothed result against the untouched world, which mostly measures the
-cylinder. Compare against the same stroke with auto-smooth at zero.
+**Auto-smooth is bounded by *what* it cuts, not by *how far*.** Smoothing moves a column to the
+local mean, and next to a nineteen-block cylinder the local mean is nineteen blocks away — so the
+pass meant to soften a seam hollowed out the hillside and raised pillars out of the valley. The
+obvious fix, a symmetric cap on movement, is wrong in the other direction: it leaves the placement
+standing as a flat-topped mesa, because tapering a tall shape back down to ground level is a big
+movement and a legitimate one.
+
+So the two directions have different bounds. Shaving away the stroke's own new material is
+unbounded. Cutting below the ground that was there before the stroke, or raising a column above
+it, is capped at `maxStep`. That needs the pre-stroke heights, which is why `SculptorBrush.apply`
+calls `sampleHeights` *before* the switch — afterwards there is no way to tell new material from
+old ground. It is one int per column of the smoothing disc, a few thousand entries, not the
+per-block write set that `trackWrites` keeps.
+
+Two traps when measuring this. Compare against the same stroke with auto-smooth at **zero**, not
+against the untouched world — the latter mostly measures the placement, and once reported a
+26-block "rise" that was the cylinder. And do not bin columns as inside or outside the brush by
+`radius`: the shapes use `(radius + 0.5)²`, so the edge ring lands in the wrong bucket and the
+taper reads as damage to untouched ground.
 
 **A surface is not the same thing as ground.** The height map cannot tell a two-block ledge over a
 drop from a hillside — both are the top of a column. Lowering one clears the gap beneath it and
 stamps a fresh surface block into thin air, one per column, which is a floating shelf; that is
-where the floating islands under a heavily auto-smoothed sphere came from. `Brushes.smooth` refuses
-to cut a column that is not solid all the way down to where the cut would end. Deliberately only in
-`smooth`: a player who picks the lower brush and aims at a floating platform means it.
+where the floating islands under a heavily auto-smoothed sphere came from. `Brushes.smooth` walks
+the target down to the first thing that can hold it up, and leaves the column alone if there is
+nothing. Refusing the cut outright was the first attempt, and it is what blocked the taper above —
+under the overhanging half of a shape there is always a gap, and that is exactly the case that has
+to reach the ground. Deliberately only in `smooth`: a player who picks the lower brush and aims at
+a floating platform means it.
 
 **Modded logs do not extend `BlockLog`.** Biomes O' Plenty's `BlockBOPLog` extends `Block`
 directly, so `instanceof BlockLog` missed every BOP trunk and the removal brush walked past it.

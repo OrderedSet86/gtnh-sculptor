@@ -26,12 +26,15 @@ import com.sk89q.worldedit.blocks.BlockID;
 import com.sk89q.worldedit.world.NullWorld;
 
 /**
- * How far the pass that runs after a placement brush is allowed to go.
+ * What the pass after a placement brush may and may not do.
  *
  * <p>
- * Auto-smooth is there to soften the seam where a placed shape meets the ground. Left uncapped it
- * follows the local mean instead, and beside a nineteen-block cylinder that mean is nineteen
- * blocks away -- so a single stroke hollowed out the hillside it was dropped into.
+ * The two halves pull in opposite directions, which is why they are tested together. A cylinder
+ * standing nineteen blocks proud of a hillside has to be able to taper all the way back down to
+ * the ground, so cutting the stroke's own material cannot be bounded. Reshaping the hillside
+ * itself has to be, or the same mean that tapers the shape hollows out the slope beside it and
+ * raises pillars out of the valley below. Bounding both was the first attempt and it left the
+ * placement standing as a flat-topped mesa.
  * </p>
  */
 public class AutoSmoothTest {
@@ -40,8 +43,8 @@ public class AutoSmoothTest {
     private static final int HEIGHT = 19;
     private static final int CENTRE_Y = 85;
 
-    /** The cap in {@code SculptorBrush.apply}: two blocks, or a third of the radius. */
-    private static final int EXPECTED_CAP = Math.max(2, Math.round(RADIUS / 3.0F));
+    /** The leash in {@code SculptorBrush.apply}: two blocks, or a third of the radius. */
+    private static final int LEASH = Math.max(2, Math.round(RADIUS / 3.0F));
 
     private static int hash(int x, int z) {
         int h = x * 374761393 + z * 668265263;
@@ -49,22 +52,18 @@ public class AutoSmoothTest {
         return h ^ (h >> 16);
     }
 
-    /**
-     * A hillside falling one block per step in x, with three blocks of roughness and voids under
-     * it -- a real slope is neither flat nor solid to bedrock.
-     */
+    /** A hillside falling one block per step in x, with three blocks of roughness on it. */
     private static class SlopeWorld extends NullWorld {
+
+        static int topAt(int x, int z) {
+            return CENTRE_Y - x + (Math.floorMod(hash(x, z), 7) - 3);
+        }
 
         @Override
         public BaseBlock getBlock(Vector position) {
-            int x = position.getBlockX(), z = position.getBlockZ();
-            int top = CENTRE_Y - x + (Math.floorMod(hash(x, z), 7) - 3);
+            int top = topAt(position.getBlockX(), position.getBlockZ());
             int y = position.getBlockY();
-
             if (y > top) return new BaseBlock(BlockID.AIR);
-            if (Math.floorMod(hash(x + 7, z - 3), 5) == 0 && y <= top - 4 && y >= top - 9) {
-                return new BaseBlock(BlockID.AIR);
-            }
             if (y == top) return new BaseBlock(BlockID.GRASS);
             if (y >= top - 3) return new BaseBlock(BlockID.DIRT);
             return new BaseBlock(BlockID.STONE);
@@ -86,24 +85,29 @@ public class AutoSmoothTest {
     }
 
     private static int surfaceOf(SculptorEditContext ctx, int x, int z) {
-        for (int y = 200; y >= 0; y--) {
+        for (int y = 220; y >= 0; y--) {
             if (!ctx.isAir(new Vector(x, y, z))) return y;
         }
         return Integer.MIN_VALUE;
     }
 
     /**
-     * Measured against the same stroke without the pass, so what is under test is the smoothing
-     * and not the cylinder it follows.
+     * Measured against the same stroke with the pass switched off, so what is under test is the
+     * smoothing rather than the cylinder it follows. Measuring against the untouched world instead
+     * mostly measures the placement, which is how a 26-block "rise" got mistaken for a smoothing
+     * bug once already.
      */
     @Test
-    public void autoSmoothBlendsTheSeamWithoutReshapingTheHillside() throws Exception {
+    public void autoSmoothTapersThePlacementWithoutReshapingTheHillside() throws Exception {
         SculptorEditContext plain = stroke(0.0D);
         SculptorEditContext smoothed = stroke(1.0D);
 
         int span = RADIUS + Math.max(3, RADIUS / 2) + 2;
-        int worst = 0;
-        int moved = 0;
+
+        int taper = 0;
+        int dugBelowGround = 0;
+        int raisedAboveGround = 0;
+        int floating = 0;
 
         for (int dx = -span; dx <= span; dx++) {
             for (int dz = -span; dz <= span; dz++) {
@@ -111,15 +115,28 @@ public class AutoSmoothTest {
                 int after = surfaceOf(smoothed, dx, dz);
                 if (before == Integer.MIN_VALUE || after == Integer.MIN_VALUE) continue;
 
-                if (after != before) moved++;
-                worst = Math.max(worst, Math.abs(after - before));
+                int ground = SlopeWorld.topAt(dx, dz);
+
+                taper = Math.max(taper, before - after);
+                dugBelowGround = Math.max(dugBelowGround, ground - after);
+                raisedAboveGround = Math.max(raisedAboveGround, after - Math.max(before, ground));
+
+                if (after > 0 && smoothed.isAir(new Vector(dx, after - 1, dz))) floating++;
             }
         }
 
-        assertTrue("auto-smooth moved a column " + worst + " blocks, cap is " + EXPECTED_CAP, worst <= EXPECTED_CAP);
+        assertTrue(
+            "the pass must be free to shave the placement back to the ground; largest cut was only " + taper,
+            taper > 2 * LEASH);
 
-        // The cap must bound the pass, not disable it -- a blend that touches nothing is no
-        // better than one that carves out a hillside.
-        assertTrue("auto-smooth should still have blended a good number of columns, got " + moved, moved > 200);
+        assertTrue(
+            "cut " + dugBelowGround + " blocks into ground that was already there, leash is " + LEASH,
+            dugBelowGround <= LEASH);
+
+        assertTrue(
+            "raised a column " + raisedAboveGround + " blocks above the ground, leash is " + LEASH,
+            raisedAboveGround <= LEASH);
+
+        assertTrue("left " + floating + " surface blocks with nothing under them", floating == 0);
     }
 }

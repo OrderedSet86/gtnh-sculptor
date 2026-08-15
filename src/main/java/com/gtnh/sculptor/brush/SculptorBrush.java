@@ -115,6 +115,19 @@ public enum SculptorBrush {
             && ctx.getPlacementMask() != PlacementMask.OVERWRITE;
         if (guardAutoSmooth) ctx.trackWrites();
 
+        // Reaches well past the brush so the new shape is blended into the ground around it.
+        // Smoothing only the footprint would round the thing off in isolation and leave the seam
+        // where it meets untouched terrain, which is the opposite of the point.
+        int reach = params.radius + Math.max(3, params.radius / 2);
+
+        // Sampled before anything is placed, because afterwards there is no way to tell the
+        // stroke's new material from the ground it is standing on -- and that distinction is what
+        // lets the pass shave a shape back to ground level without also digging into the ground.
+        // An int per column of the smoothing disc, so this costs a few thousand entries.
+        int[] groundBefore = (autoSmoothable && params.autoSmooth > 0.0D)
+            ? Brushes.sampleHeights(ctx, centre.getBlockX(), centre.getBlockY(), centre.getBlockZ(), reach)
+            : null;
+
         switch (this) {
             case SPHERE:
                 Brushes.sphere(ctx, centre, params, false);
@@ -163,10 +176,6 @@ public enum SculptorBrush {
             // Runs through the same context, so in commit mode it lands in the same undo entry
             // and in preview mode the ghost already shows the smoothed result.
             //
-            // Reaches well past the brush so the new shape is blended into the ground around it.
-            // Smoothing only the footprint would just round the thing off in isolation and leave
-            // the seam where it meets untouched terrain, which is the opposite of the point.
-            int reach = params.radius + Math.max(3, params.radius / 2);
             // Diffusion has to travel. A single pass shifts a column next to a two-block step by
             // well under half a block, which rounds away to nothing, so the blend only reaches
             // past the brush once enough passes have spread it -- more of them the stronger the
@@ -180,18 +189,18 @@ public enum SculptorBrush {
                 0.0D,
                 params.useSelectedMaterial);
 
+            // The leash on reshaping terrain the player did not aim at: how far a column may be
+            // raised, and how far below the ground it stood on it may be cut. Shaving the stroke's
+            // own material back down is not bounded by this -- that is the taper, and a shape
+            // standing proud of a slope has to be able to follow it all the way to the ground.
+            int maxStep = Math.max(2, (int) Math.round(params.autoSmooth * params.radius / 3.0D));
+
             // "Air only" means leave what is already there alone, and the player did not ask for
             // this pass -- so here, unlike in a brush they chose, the mask governs cutting as
             // well as building. Undoing what the stroke just placed is still allowed.
-            // How far this pass may move any one column. It exists to soften the seam where a
-            // placed shape meets the ground, so it must not be free to take a column wherever the
-            // local mean happens to sit: beside a nineteen-block cylinder that mean is nineteen
-            // blocks away, and following it hollowed out the hillside instead of blending into it.
-            int maxStep = Math.max(2, (int) Math.round(params.autoSmooth * params.radius / 3.0D));
-
             if (guardAutoSmooth) ctx.setGuardRemovals(true);
             try {
-                Brushes.smooth(ctx, centre, smoothing, passes, maxStep);
+                Brushes.smooth(ctx, centre, smoothing, passes, maxStep, groundBefore);
             } finally {
                 if (guardAutoSmooth) ctx.setGuardRemovals(false);
             }

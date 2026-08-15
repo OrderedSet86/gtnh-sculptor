@@ -142,7 +142,7 @@ public final class Brushes {
      * at every row boundary.
      * </p>
      */
-    private static int[] sampleHeights(SculptorEditContext ctx, int cx, int cy, int cz, int r) {
+    static int[] sampleHeights(SculptorEditContext ctx, int cx, int cy, int cz, int r) {
         int width = 2 * r + 1;
         int[] heights = new int[width * width];
 
@@ -344,21 +344,32 @@ public final class Brushes {
      */
     public static void smooth(SculptorEditContext ctx, Vector centre, BrushParams params, int iterations)
         throws MaxChangedBlocksException {
-        smooth(ctx, centre, params, iterations, Integer.MAX_VALUE);
+        smooth(ctx, centre, params, iterations, Integer.MAX_VALUE, null);
     }
 
     /**
-     * Average each column's height against its neighbours, moving none of them further than
-     * {@code maxStep}.
+     * Average each column's height against its neighbours, bounded by what the caller is willing
+     * to let it disturb.
      *
-     * @param maxStep how far a single column may move, in blocks. The smooth brush is unbounded --
-     *                the player asked for it. The auto-smooth pass is not: it is there to blend a
-     *                shape into the ground it was placed in, and a mean taken next to a
-     *                nineteen-block cylinder is nineteen blocks away, so uncapped it hollowed out
-     *                whole hillsides rather than softening a seam.
+     * <p>
+     * The bound is not symmetric, because the two directions are not the same act. Cutting a
+     * column back down is mostly removing material the stroke has just added, and that is the
+     * whole job of the auto-smooth pass -- a cylinder standing proud of a hillside has to be able
+     * to taper all the way back to the ground it was dropped onto, however far that is. Cutting
+     * <em>into</em> the ground that was already there, or raising a column above where it stood,
+     * is reshaping terrain nobody asked to reshape, and that is what needs a leash: uncapped it
+     * hollowed out hillsides and grew pillars out of the valley floor.
+     * </p>
+     *
+     * @param maxStep      how far a column may rise, and how far below the pre-existing ground it
+     *                     may be cut. {@code Integer.MAX_VALUE} for the smooth brush, which the
+     *                     player asked for and which is allowed to reshape whatever it is aimed at.
+     * @param groundBefore ground height per column as it stood before the stroke, indexed like
+     *                     {@link #sampleHeights}, or null to treat the current surface as the
+     *                     original.
      */
-    public static void smooth(SculptorEditContext ctx, Vector centre, BrushParams params, int iterations, int maxStep)
-        throws MaxChangedBlocksException {
+    public static void smooth(SculptorEditContext ctx, Vector centre, BrushParams params, int iterations, int maxStep,
+        int[] groundBefore) throws MaxChangedBlocksException {
         int cx = centre.getBlockX();
         int cy = centre.getBlockY();
         int cz = centre.getBlockZ();
@@ -402,15 +413,29 @@ public final class Brushes {
                 // falloff is smallest, so damping by it shrinks a genuine one-block correction
                 // to a fraction and rounding then discards it entirely.
                 int desired = (int) Math.round(surface + (smoothed - surface) * params.strength);
-                if (desired > surface + maxStep) desired = surface + maxStep;
-                if (desired < surface - maxStep) desired = surface - maxStep;
 
-                // Cutting a column whose material does not reach that far down would clear the
-                // gap and then stamp a surface block into thin air, one per column -- which is
-                // where the floating shelves under a heavily auto-smoothed sphere came from. A
-                // ledge with nothing under it has no connected surface, so there is nothing here
-                // to smooth: leave the column exactly as it is.
-                if (desired < surface && !isSolidDown(ctx, cx + dx, cz + dz, surface, desired)) continue;
+                // How far down this column is free to be cut. Everything above the ground as it
+                // stood before the stroke is the stroke's own material, and shaving that back is
+                // the taper; below it the leash applies.
+                int wasGround = surface;
+                if (groundBefore != null) {
+                    int before = groundBefore[index];
+                    if (before != Integer.MIN_VALUE && before < wasGround) wasGround = before;
+                }
+
+                int lowest = (maxStep == Integer.MAX_VALUE) ? 0 : Math.max(0, wasGround - maxStep);
+                int highest = (maxStep == Integer.MAX_VALUE) ? 255 : Math.min(255, surface + maxStep);
+                if (desired < lowest) desired = lowest;
+                if (desired > highest) desired = highest;
+
+                if (desired < surface) {
+                    // The target can land in a gap -- under the overhanging half of a shape
+                    // dropped into a slope there is nothing between it and the ground far below.
+                    // Stamping a surface block there is what left floating shelves behind, so the
+                    // column is taken down to the first thing that can actually hold it up.
+                    desired = groundAtOrBelow(ctx, cx + dx, cz + dz, desired, lowest);
+                    if (desired == Integer.MIN_VALUE) continue;
+                }
 
                 reshapeColumn(ctx, params, cx + dx, cz + dz, surface, desired);
             }
@@ -418,19 +443,18 @@ public final class Brushes {
     }
 
     /**
-     * Whether a column is unbroken ground from {@code fromY} down to {@code toY}, both included.
+     * The first ground at or below {@code fromY}, searching no lower than {@code minY}.
      *
-     * <p>
-     * Costs no more than the cut it guards, since that walks the same span to clear it.
-     * </p>
+     * @return that height, or {@link Integer#MIN_VALUE} if the column has nothing to stand on
+     *         within reach -- a shape placed in open air, which is left alone rather than dropped.
      */
-    private static boolean isSolidDown(SculptorEditContext ctx, int x, int z, int fromY, int toY) {
+    private static int groundAtOrBelow(SculptorEditContext ctx, int x, int z, int fromY, int minY) {
         int top = Math.min(255, fromY);
-        int bottom = Math.max(0, toY);
+        int bottom = Math.max(0, minY);
         for (int y = top; y >= bottom; y--) {
-            if (!isGround(ctx, x, y, z)) return false;
+            if (isGround(ctx, x, y, z)) return y;
         }
-        return true;
+        return Integer.MIN_VALUE;
     }
 
     /** Mean of the 3x3 neighbourhood, skipping empty columns so they do not drag the average. */
