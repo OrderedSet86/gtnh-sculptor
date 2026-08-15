@@ -70,11 +70,15 @@ public class OverhangModeTest {
     }
 
     private static SculptorEditContext cylinder(OverhangMode mode) throws Exception {
+        return cylinder(1.0D, mode);
+    }
+
+    private static SculptorEditContext cylinder(double autoSmooth, OverhangMode mode) throws Exception {
         SculptorEditContext ctx = SculptorEditContext.preview(new SlopeWorld());
         SculptorBrush.CYLINDER.apply(
             ctx,
             new Vector(0, CENTRE_Y, 0),
-            new BrushParams(RADIUS, new BaseBlock(BlockID.STONE), 10, 1.0D, 1.0D, false, mode));
+            new BrushParams(RADIUS, new BaseBlock(BlockID.STONE), 10, 1.0D, autoSmooth, false, mode));
         return ctx;
     }
 
@@ -166,6 +170,48 @@ public class OverhangModeTest {
         assertTrue(
             "the free edge was thinned to " + edgeHeight + " blocks instead of keeping its height",
             edgeHeight >= 5);
+    }
+
+    /**
+     * The cantilever keeps the face the shape was drawn with.
+     *
+     * <p>
+     * Its underside has already been dealt with by then, and letting the height map work the top
+     * over as well pulls each column toward whatever the terrain beside it happens to be doing --
+     * up against the hill, down over the drop -- which carves the flat face into an island of
+     * lumps. Filling to ground has no such face to preserve, and there the taper is the point.
+     * </p>
+     */
+    @Test
+    public void theCantileverLeavesThePlacedShapeAloneAndBlendsOnlyTheGround() throws Exception {
+        SculptorEditContext raw = cylinder(0.0D, OverhangMode.CANTILEVER);
+        SculptorEditContext smoothed = cylinder(1.0D, OverhangMode.CANTILEVER);
+
+        int placedColumns = 0;
+        for (int dx = -RADIUS; dx <= RADIUS; dx++) {
+            for (int dz = -RADIUS; dz <= RADIUS; dz++) {
+                int before = topOf(raw, dx, dz);
+                if (before == Integer.MIN_VALUE || before <= SlopeWorld.topAt(dx)) continue;
+
+                placedColumns++;
+                assertEquals(
+                    "the shape's top at (" + dx + "," + dz + ") was reworked by the smoothing pass",
+                    before,
+                    topOf(smoothed, dx, dz));
+            }
+        }
+        assertTrue("no shape was placed, so this proves nothing", placedColumns > 100);
+
+        // Ground beyond the shape is still blended, otherwise "leave the shape alone" would just
+        // mean doing nothing at all.
+        int reach = RADIUS + Math.max(3, RADIUS / 2);
+        int groundColumnsMoved = 0;
+        for (int dx = -reach; dx <= reach; dx++) {
+            for (int dz = -reach; dz <= reach; dz++) {
+                if (topOf(raw, dx, dz) != topOf(smoothed, dx, dz)) groundColumnsMoved++;
+            }
+        }
+        assertTrue("the surrounding ground was not blended at all", groundColumnsMoved > 0);
     }
 
     /**

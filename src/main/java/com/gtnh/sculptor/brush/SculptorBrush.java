@@ -209,7 +209,12 @@ public enum SculptorBrush {
             // well as building. Undoing what the stroke just placed is still allowed.
             if (guardAutoSmooth) ctx.setGuardRemovals(true);
             try {
-                Brushes.smooth(ctx, centre, smoothing, passes, maxStep, groundBefore);
+                // The cantilever keeps the shape it was drawn with -- its underside has already
+                // been dealt with, and reworking the top as well is what turned a flat face into
+                // an island of lumps. Filling to ground has no such face to preserve: there the
+                // taper down to the surrounding terrain is the whole point.
+                boolean keepPlacement = params.overhang == OverhangMode.CANTILEVER && fillsDownToGround();
+                Brushes.smooth(ctx, centre, smoothing, passes, maxStep, groundBefore, keepPlacement);
             } finally {
                 if (guardAutoSmooth) ctx.setGuardRemovals(false);
             }

@@ -615,6 +615,20 @@ public final class Brushes {
      */
     public static void smooth(SculptorEditContext ctx, Vector centre, BrushParams params, int iterations, int maxStep,
         int[] groundBefore) throws MaxChangedBlocksException {
+        smooth(ctx, centre, params, iterations, maxStep, groundBefore, false);
+    }
+
+    /**
+     * @param keepPlacement leave every column the stroke put material in exactly as it is, and
+     *                      blend only the ground around them. For the cantilever, where the shape
+     *                      is meant to keep the face it was drawn with: the underside pass has
+     *                      already dealt with the overhang, and letting the height map work the
+     *                      top over as well carves the flat face into an island of lumps, since it
+     *                      pulls each column toward whatever the terrain beside it happens to be
+     *                      doing.
+     */
+    public static void smooth(SculptorEditContext ctx, Vector centre, BrushParams params, int iterations, int maxStep,
+        int[] groundBefore, boolean keepPlacement) throws MaxChangedBlocksException {
         int cx = centre.getBlockX();
         int cy = centre.getBlockY();
         int cz = centre.getBlockZ();
@@ -665,6 +679,10 @@ public final class Brushes {
                 int wasGround = surface;
                 if (groundBefore != null) {
                     int before = groundBefore[index];
+
+                    // A column standing higher than it did is one the stroke built in.
+                    if (keepPlacement && before != Integer.MIN_VALUE && surface > before) continue;
+
                     if (before != Integer.MIN_VALUE && before < wasGround) wasGround = before;
                 }
 

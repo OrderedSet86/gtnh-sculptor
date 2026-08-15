@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 38 tests green.
+Current state: **0.4.0 in progress** on `main`, 39 tests green.
 
 ---
 
@@ -123,6 +123,12 @@ Three ways to get that wrong, all of which were built before the right one:
    down and gives a wedge tapering away, not a ledge.
 
 Both distances come from `spreadDistances`, a breadth-first walk over the footprint.
+
+The cantilever also passes `keepPlacement` to the smoothing pass, which then skips every column
+the stroke built in. Without it the height map works the top over as well, pulling each column
+toward whatever the terrain beside it happens to be doing — up against the hill, down over the drop
+— and carving the flat face into an island of lumps. Filling to ground must **not** set it: there
+the taper down into the surrounding terrain is the entire point.
 
 Also: a column joined to the hillside has no underside. Walking its solid run down goes through the
 terrain to bedrock. Reading that as the shape's base made the first version strip a hundred and
