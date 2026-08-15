@@ -106,12 +106,23 @@ underside. `Brushes.settleOntoGround` extends the solid shapes down onto the gro
 smoothing pass runs, gated on the auto-smooth slider so a plain cylinder stays a true cylinder.
 
 There are two reasonable answers, and `OverhangMode` picks between them. `settleOntoGround` fills
-to the terrain; `cantileverOntoGround` leaves it hanging and rounds the underside into the slope.
-Note the second does **not** use the box blur the rest of the smoothing uses, and trying to is the
-obvious wrong turn: a shape's base is flush with the ground it springs from, so the underside and
-the ground are the same height everywhere and a mean has nothing to lean on. What varies across a
-cantilever is reach, not height — so it is a distance transform out from the anchored columns, with
-the usual `falloff` over it.
+to the terrain; `cantileverOntoGround` leaves it hanging and sweeps the underside down to meet the
+slope, so the void behind the free edge is closed and the free edge keeps its full height.
+
+Three ways to get that wrong, all of which were built before the right one:
+
+1. **A box blur.** The obvious tool, and it does nothing. A shape's base is flush with the ground
+   it springs from, so the underside and the ground sit at the same height everywhere; the field
+   is uniform and a mean has nothing to lean on.
+2. **A fixed span out from the anchor.** Reaches the shape's flat base a few columns in and leaves
+   everything past it exactly as it was — a slab over a void with a sheer edge, which is the
+   floating island the whole pass exists to remove. The curve has to be normalised to each
+   column's own position between anchor and edge (`toRim / (toAnchor + toRim)`) so it spans the
+   overhang however wide that is.
+3. **Sweeping it the other way**, thinning the free edge to nothing. That is the same curve upside
+   down and gives a wedge tapering away, not a ledge.
+
+Both distances come from `spreadDistances`, a breadth-first walk over the footprint.
 
 Also: a column joined to the hillside has no underside. Walking its solid run down goes through the
 terrain to bedrock. Reading that as the shape's base made the first version strip a hundred and

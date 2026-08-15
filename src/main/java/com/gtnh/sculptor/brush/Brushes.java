@@ -331,8 +331,10 @@ public final class Brushes {
                 int wasGround = groundBefore[(dz + reach) * reachWidth + (dx + reach)];
                 if (wasGround == Integer.MIN_VALUE) continue;
 
-                int bottom = terrainSurfaceY(ctx, cx + dx, cz + dz, cy);
-                if (bottom == Integer.MIN_VALUE) continue;
+                int top = terrainSurfaceY(ctx, cx + dx, cz + dz, cy);
+                if (top == Integer.MIN_VALUE) continue;
+
+                int bottom = top;
                 while (bottom > 0 && isGround(ctx, cx + dx, bottom - 1, cz + dz)) bottom--;
 
                 bottoms[index] = bottom;
@@ -352,10 +354,87 @@ public final class Brushes {
 
         if (!anyOverhang || frontier.isEmpty()) return;
 
-        // How far each column is from the nearest anchored one, in columns. A blur cannot supply
-        // this: with the shape's base flush to the ground it springs from, the underside and the
-        // ground are the same height everywhere and there is nothing for a mean to lean on. What
-        // varies across a cantilever is not height but reach.
+        // Distance, in columns, to the nearest anchored one. A blur cannot supply what is needed
+        // here: the shape's base is flush with the ground it springs from, so the underside and
+        // the ground sit at the same height everywhere and a mean has nothing to lean on. What
+        // varies across a cantilever is reach, not height.
+        spreadDistances(frontier, fromAnchor, bottoms, width);
+
+        // And distance to the free edge, from the columns of the footprint that have open air
+        // beside them. A cantilever is pinned at both ends: thick where it springs from the
+        // ground, thinning to an edge where it ends. Pinning only the anchor was the first
+        // attempt, and it left everything past the fillet as the flat slab it started as --
+        // a floating island with the underside untouched, which is exactly what it looked like.
+        int[] fromRim = new int[width * width];
+        java.util.ArrayDeque<Integer> rim = new java.util.ArrayDeque<Integer>();
+        for (int index = 0; index < fromRim.length; index++) {
+            fromRim[index] = Integer.MAX_VALUE;
+            if (bottoms[index] == Integer.MIN_VALUE) continue;
+
+            int ix = index % width;
+            int iz = index / width;
+            if (isFootprintEdge(bottoms, width, ix, iz)) {
+                fromRim[index] = 0;
+                rim.add(index);
+            }
+        }
+        spreadDistances(rim, fromRim, bottoms, width);
+
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                int index = (dz + r) * width + (dx + r);
+                int bottom = bottoms[index];
+                int wasGround = ground[index];
+                if (bottom == Integer.MIN_VALUE || wasGround == Integer.MIN_VALUE) continue;
+
+                // Only the hanging part is shaped. Anchored ground is left exactly as it was.
+                if (bottom <= wasGround) continue;
+
+                int toAnchor = fromAnchor[index];
+                int toRim = fromRim[index];
+                if (toAnchor == Integer.MAX_VALUE || toRim == Integer.MAX_VALUE) continue;
+                if (toAnchor + toRim == 0) continue;
+
+                // Where this column sits between the anchor and the free edge, 0 at the edge and
+                // 1 against the hillside. Normalising by the column's own two distances is what
+                // makes the curve span the whole overhang rather than a fixed number of blocks:
+                // a fixed span reaches the shape's flat base a few columns in and leaves
+                // everything past it as the slab it started as, which is the floating island.
+                double along = toRim / (double) (toAnchor + toRim);
+                double eased = along * along * (3.0D - 2.0D * along);
+
+                // The underside sweeps down to the ground where the shape meets the slope, and is
+                // left at the shape's own base at the free edge -- so the outer face keeps its
+                // full height and the void behind it is closed by a curve. Thinning the free edge
+                // instead is the same curve upside down, and gives a wedge rather than a ledge.
+                int target = (int) Math.round(bottom - (bottom - wasGround) * eased * params.autoSmooth);
+                if (target < wasGround) target = wasGround;
+                if (target > bottom) target = bottom;
+
+                // Only ever fills. Everything between the new underside and the shape's base is
+                // material this stroke placed, and the ground below is never reached.
+                for (int y = bottom - 1; y >= target; y--) {
+                    ctx.setBlock(cx + dx, y, cz + dz, params.material);
+                }
+            }
+        }
+    }
+
+    /** Whether this column of the footprint has open air beside it -- the shape's free edge. */
+    private static boolean isFootprintEdge(int[] footprint, int width, int ix, int iz) {
+        return outsideFootprint(footprint, width, ix + 1, iz) || outsideFootprint(footprint, width, ix - 1, iz)
+            || outsideFootprint(footprint, width, ix, iz + 1)
+            || outsideFootprint(footprint, width, ix, iz - 1);
+    }
+
+    private static boolean outsideFootprint(int[] footprint, int width, int ix, int iz) {
+        if (ix < 0 || iz < 0 || ix >= width || iz >= width) return true;
+        return footprint[iz * width + ix] == Integer.MIN_VALUE;
+    }
+
+    /** Breadth-first distance over the footprint, from whatever is already seeded at zero. */
+    private static void spreadDistances(java.util.ArrayDeque<Integer> frontier, int[] distance, int[] footprint,
+        int width) {
         while (!frontier.isEmpty()) {
             int index = frontier.poll();
             int ix = index % width;
@@ -367,35 +446,11 @@ public final class Brushes {
                 if (nx < 0 || nz < 0 || nx >= width || nz >= width) continue;
 
                 int neighbour = nz * width + nx;
-                if (bottoms[neighbour] == Integer.MIN_VALUE) continue;
-                if (fromAnchor[neighbour] <= fromAnchor[index] + 1) continue;
+                if (footprint[neighbour] == Integer.MIN_VALUE) continue;
+                if (distance[neighbour] <= distance[index] + 1) continue;
 
-                fromAnchor[neighbour] = fromAnchor[index] + 1;
+                distance[neighbour] = distance[index] + 1;
                 frontier.add(neighbour);
-            }
-        }
-
-        // How far the fillet reaches out from the anchor before the underside levels off into the
-        // flat base of the shape.
-        double span = Math.max(2.0D, params.autoSmooth * r / 2.0D);
-
-        for (int dx = -r; dx <= r; dx++) {
-            for (int dz = -r; dz <= r; dz++) {
-                int index = (dz + r) * width + (dx + r);
-                int bottom = bottoms[index];
-                int wasGround = ground[index];
-                if (bottom == Integer.MIN_VALUE || wasGround == Integer.MIN_VALUE) continue;
-                if (bottom <= wasGround) continue;
-
-                double weight = falloff(fromAnchor[index], span);
-                if (weight <= 0.0D) continue;
-
-                int target = (int) Math.round(bottom - (bottom - wasGround) * weight);
-                if (target <= wasGround) target = wasGround + 1;
-
-                for (int y = bottom - 1; y >= target; y--) {
-                    ctx.setBlock(cx + dx, y, cz + dz, params.material);
-                }
             }
         }
     }

@@ -40,11 +40,17 @@ public class OverhangModeTest {
     private static final int CENTRE_Y = 120;
     private static final int RADIUS = 12;
 
-    /** Level ground up to the origin, then falling two blocks per step. */
+    /**
+     * Level ground up to the origin, then a sheer drop -- a mountainside, which is where this
+     * matters. On a gentle slope the top-surface taper reaches the ground on its own and thins
+     * the outer edge legitimately, so there is no free edge left to say anything about.
+     */
+    private static final int DROP = 45;
+
     private static class SlopeWorld extends NullWorld {
 
         static int topAt(int x) {
-            return (x <= 0) ? CENTRE_Y : CENTRE_Y - 2 * x;
+            return (x <= 0) ? CENTRE_Y : CENTRE_Y - DROP;
         }
 
         @Override
@@ -79,6 +85,13 @@ public class OverhangModeTest {
         return Integer.MIN_VALUE;
     }
 
+    private static int bottomOf(SculptorEditContext ctx, int x, int z) {
+        int y = topOf(ctx, x, z);
+        if (y == Integer.MIN_VALUE) return Integer.MIN_VALUE;
+        while (y > 0 && !ctx.isAir(new Vector(x, y - 1, z))) y--;
+        return y;
+    }
+
     /** Air blocks between the ground and the underside of what is standing above it. */
     private static int gapUnder(SculptorEditContext ctx, int x, int z) {
         int y = topOf(ctx, x, z);
@@ -102,48 +115,85 @@ public class OverhangModeTest {
         }
     }
 
+    /** The shape's own height above the ground in this column, or 0 where it placed nothing. */
+    private static int slabHeightAt(SculptorEditContext ctx, int x, int z) {
+        int top = topOf(ctx, x, z);
+        int ground = SlopeWorld.topAt(x);
+        return (top == Integer.MIN_VALUE || top <= ground) ? 0 : top - ground;
+    }
+
     /**
      * The shape of the underside is the whole point, so this checks the curve rather than just
-     * that something happened: touching the ground at the anchor, opening up as it reaches out,
-     * and never opening back up again on the way.
+     * that something happened.
+     *
+     * <p>
+     * The underside meets the slope where the shape springs from it, and sweeps away from the
+     * ground as it reaches out, leaving the free edge standing at the shape's own full height.
+     * Thinning the free edge instead is the same curve upside down and gives a wedge tapering to
+     * nothing, which is not a ledge -- and leaving the underside flat past a fixed distance gives
+     * a slab hanging over a void, which is what the first two attempts did.
+     * </p>
      */
     @Test
-    public void theCantileverCurvesFromTheAnchorAndLevelsOff() throws Exception {
+    public void theCantileverUndersideSweepsFromTheSlopeToAFullHeightEdge() throws Exception {
         SculptorEditContext ctx = cylinder(OverhangMode.CANTILEVER);
 
         int previous = -1;
-        boolean touchedDown = false;
-        boolean liftedOff = false;
+        int nearest = -1;
+        int furthest = -1;
+        int furthestX = 0;
 
-        for (int dx = 1; dx <= RADIUS - 2; dx++) {
+        for (int dx = 1; dx <= RADIUS; dx++) {
+            if (slabHeightAt(ctx, dx, 0) == 0) continue;
+
             int gap = gapUnder(ctx, dx, 0);
-
-            if (gap == 0) touchedDown = true;
-            if (gap > 0) liftedOff = true;
+            if (nearest < 0) nearest = gap;
+            furthest = gap;
+            furthestX = dx;
 
             assertTrue(
-                "the underside dips back down at x=" + dx + " (gap " + gap + " after " + previous + ")",
+                "the underside dips back toward the ground at x=" + dx + " (gap " + gap + " after " + previous + ")",
                 gap >= previous);
             previous = gap;
         }
 
-        assertTrue("the cantilever should meet the ground where it springs from", touchedDown);
-        assertTrue("the cantilever should still be hanging further out, not filled to ground", liftedOff);
+        assertTrue("no overhang was produced, so this proves nothing", furthestX > 0);
+        assertEquals("the underside should meet the slope where the shape springs from it", 0, nearest);
+        assertTrue("the underside should sweep away from the ground as it reaches out", furthest > 0);
+
+        // The free edge keeps the shape's height rather than tapering away to a wedge.
+        int edgeHeight = topOf(ctx, furthestX, 0) - bottomOf(ctx, furthestX, 0) + 1;
+        assertTrue(
+            "the free edge was thinned to " + edgeHeight + " blocks instead of keeping its height",
+            edgeHeight >= 5);
     }
 
     /**
      * A column joined to the hillside has no underside -- walking its solid run down goes through
      * the terrain to bedrock. Reading that as the shape's base once made the pass strip a hundred
      * and twenty blocks of hillside out from under itself.
+     *
+     * <p>
+     * Bounded by the auto-smooth leash rather than by zero, because the top-surface pass is
+     * separately entitled to cut that far into untouched ground while blending the seam. A leash
+     * of four still catches a hundred and twenty.
+     * </p>
      */
     @Test
-    public void theCantileverNeverCutsIntoTheGroundBeneathIt() throws Exception {
+    public void theCantileverNeverDigsOutTheGroundBeneathIt() throws Exception {
+        int leash = Math.max(2, Math.round(RADIUS / 3.0F));
         SculptorEditContext ctx = cylinder(OverhangMode.CANTILEVER);
 
         for (int dx = -RADIUS; dx <= RADIUS; dx++) {
             for (int dz = -RADIUS; dz <= RADIUS; dz++) {
                 int ground = SlopeWorld.topAt(dx);
-                assertTrue("ground at (" + dx + "," + dz + ") was cut away", !ctx.isAir(new Vector(dx, ground, dz)));
+
+                int surviving = ground;
+                while (surviving > 0 && ctx.isAir(new Vector(dx, surviving, dz))) surviving--;
+
+                assertTrue(
+                    "ground at (" + dx + "," + dz + ") was dug out from " + ground + " down to " + surviving,
+                    ground - surviving <= leash);
             }
         }
     }
