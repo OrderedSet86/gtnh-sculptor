@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.4.0 in progress** on `main`, 39 tests green.
+Current state: **0.4.0 in progress** on `main`, 41 tests green.
 
 ---
 
@@ -123,6 +123,19 @@ Three ways to get that wrong, all of which were built before the right one:
    down and gives a wedge tapering away, not a ledge.
 
 Both distances come from `spreadDistances`, a breadth-first walk over the footprint.
+
+**Support is not only what is underneath.** An arch is built by spanning out from something that
+stands *beside* the new piece. While "anchored" meant "this column's material reaches the ground
+below", a horizontal span found no anchor anywhere and the whole pass bailed, leaving the flat slab
+it was drawn as — and no amount of tuning the curve mattered, because it never ran.
+`touchesSolidBeside` reads the pre-stroke heights of the four neighbouring columns, which is why
+`groundBefore` is sampled over the wider `reach` disc: the columns just outside the footprint have
+to be available to ask about. It must compare against the shape's underside, not merely check that
+something is there, or a span two blocks clear of a tower anchors to ground ninety blocks below.
+
+The sweep is also bounded to about the shape's own height. Following the ground however far away it
+is turns a soffit into a curtain wall — eighty blocks, measured, for a ten-block cylinder spanning
+off a tower. Filling to ground is the mode for that.
 
 The cantilever also passes `keepPlacement` to the smoothing pass, which then skips every column
 the stroke built in. Without it the height map works the top over as well, pulling each column

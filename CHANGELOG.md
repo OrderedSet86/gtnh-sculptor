@@ -39,6 +39,14 @@
   blends only the ground around it, since a shape kept for its shape should not then have
   that shape worked over.
 
+  The cantilever takes its support from whatever the shape touches, not only from what is
+  underneath it. An arch is built by spanning out from something standing *beside* the new
+  piece, and while support meant "the ground below" a span like that found none at all and
+  was left as the flat slab it was drawn as — the higher the span, the more certainly. It
+  also curves down by about the shape's own height and no further: chasing whatever happens
+  to be below turns a soffit into a curtain wall, which is what the other mode is for. A
+  piece placed touching nothing at all is still left exactly as drawn.
+
   With the auto-smooth slider at zero nothing changes: a cylinder is exactly a cylinder,
   hanging base and all, which is what building in the air needs. Hollow shapes are never
   filled, since that would stop them being hollow.

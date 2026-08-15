@@ -40,22 +40,36 @@ public class OverhangModeTest {
     private static final int CENTRE_Y = 120;
     private static final int RADIUS = 12;
 
+    /** The cylinder's own height, which is what bounds how far its underside may curve down. */
+    private static final int HEIGHT = 10;
+
     /**
-     * Level ground up to the origin, then a sheer drop -- a mountainside, which is where this
-     * matters. On a gentle slope the top-surface taper reaches the ground on its own and thins
-     * the outer edge legitimately, so there is no free edge left to say anything about.
+     * Level ground up to the origin, then a sheer drop. Shallow by default -- shallower than the
+     * shape is tall -- because that is the case where the underside is expected to reach the
+     * ground and merge into it. A drop deeper than the shape gets a soffit instead, which is a
+     * separate test.
      */
-    private static final int DROP = 45;
+    private static final int DROP = 6;
 
     private static class SlopeWorld extends NullWorld {
 
+        private final int drop;
+
+        SlopeWorld(int drop) {
+            this.drop = drop;
+        }
+
         static int topAt(int x) {
-            return (x <= 0) ? CENTRE_Y : CENTRE_Y - DROP;
+            return topAt(x, DROP);
+        }
+
+        static int topAt(int x, int drop) {
+            return (x <= 0) ? CENTRE_Y : CENTRE_Y - drop;
         }
 
         @Override
         public BaseBlock getBlock(Vector position) {
-            int top = topAt(position.getBlockX());
+            int top = topAt(position.getBlockX(), drop);
             int y = position.getBlockY();
             if (y > top) return new BaseBlock(BlockID.AIR);
             if (y == top) return new BaseBlock(BlockID.GRASS);
@@ -74,11 +88,15 @@ public class OverhangModeTest {
     }
 
     private static SculptorEditContext cylinder(double autoSmooth, OverhangMode mode) throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(new SlopeWorld());
+        return cylinder(autoSmooth, mode, DROP);
+    }
+
+    private static SculptorEditContext cylinder(double autoSmooth, OverhangMode mode, int drop) throws Exception {
+        SculptorEditContext ctx = SculptorEditContext.preview(new SlopeWorld(drop));
         SculptorBrush.CYLINDER.apply(
             ctx,
             new Vector(0, CENTRE_Y, 0),
-            new BrushParams(RADIUS, new BaseBlock(BlockID.STONE), 10, 1.0D, autoSmooth, false, mode));
+            new BrushParams(RADIUS, new BaseBlock(BlockID.STONE), HEIGHT, 1.0D, autoSmooth, false, mode));
         return ctx;
     }
 
@@ -212,6 +230,91 @@ public class OverhangModeTest {
             }
         }
         assertTrue("the surrounding ground was not blended at all", groundColumnsMoved > 0);
+    }
+
+    /**
+     * Over a drop deeper than the shape is tall, the underside curves down by about the shape's
+     * own height and stops.
+     *
+     * <p>
+     * Following the ground however far away it is turns a soffit into a curtain wall -- measured
+     * at eighty blocks for a ten-block cylinder placed off a tower. Filling to ground is the mode
+     * for that; this one is not.
+     * </p>
+     */
+    @Test
+    public void overADeepDropTheCantileverMakesASoffitRatherThanACurtain() throws Exception {
+        int deep = 45;
+        SculptorEditContext ctx = cylinder(1.0D, OverhangMode.CANTILEVER, deep);
+
+        int deepest = 0;
+        for (int dx = 1; dx <= RADIUS; dx++) {
+            for (int dz = -RADIUS; dz <= RADIUS; dz++) {
+                int bottom = bottomOf(ctx, dx, dz);
+                if (bottom == Integer.MIN_VALUE || bottom <= SlopeWorld.topAt(dx, deep)) continue;
+                deepest = Math.max(deepest, CENTRE_Y - bottom);
+            }
+        }
+
+        assertTrue("the underside did not curve down at all", deepest > 0);
+        assertTrue(
+            "the underside dropped " + deepest + " blocks, more than the shape's own height of " + HEIGHT,
+            deepest <= HEIGHT);
+    }
+
+    /** A tower standing beside the shape rather than under it -- how an arch is built. */
+    private static class TowerWorld extends NullWorld {
+
+        @Override
+        public BaseBlock getBlock(Vector position) {
+            int y = position.getBlockY();
+            if (position.getBlockX() <= 0 && y <= CENTRE_Y + 50) return new BaseBlock(BlockID.STONE);
+            return new BaseBlock(y <= CENTRE_Y - 90 ? BlockID.STONE : BlockID.AIR);
+        }
+
+        @Override
+        public BaseBlock getLazyBlock(Vector position) {
+            return getBlock(position);
+        }
+    }
+
+    private static SculptorEditContext spanFromTower(int centreX) throws Exception {
+        SculptorEditContext ctx = SculptorEditContext.preview(new TowerWorld());
+        SculptorBrush.CYLINDER.apply(
+            ctx,
+            new Vector(centreX, CENTRE_Y, 0),
+            new BrushParams(RADIUS, new BaseBlock(BlockID.STONE), HEIGHT, 1.0D, 1.0D, false, OverhangMode.CANTILEVER));
+        return ctx;
+    }
+
+    /**
+     * Support is not only what is underneath.
+     *
+     * <p>
+     * An arch is built by spanning out from something standing beside the new shape rather than
+     * below it. Defining the anchor as "this column reaches the ground" meant a span like that
+     * found no anchor at all and was left as the flat slab it was drawn as, however carefully the
+     * underside pass was tuned -- and the higher the span, the more certain that was.
+     * </p>
+     */
+    @Test
+    public void aSpanIsAnchoredByWhatStandsBesideItNotOnlyByWhatIsBelow() throws Exception {
+        // Abutting the tower: nothing under any column, contact on one side only.
+        SculptorEditContext abutting = spanFromTower(RADIUS + 1);
+
+        int curved = 0;
+        for (int dx = 1; dx <= 2 * RADIUS + 1; dx++) {
+            if (bottomOf(abutting, dx, 0) < CENTRE_Y) curved++;
+        }
+        assertTrue("the span was left as a flat slab, underside untouched", curved > 0);
+
+        // Two blocks clear of it, touching nothing: left exactly as drawn, as chosen.
+        SculptorEditContext clear = spanFromTower(RADIUS + 3);
+        for (int dx = 3; dx <= 2 * RADIUS + 3; dx++) {
+            int bottom = bottomOf(clear, dx, 0);
+            if (bottom == Integer.MIN_VALUE) continue;
+            assertEquals("a span touching nothing should keep the shape it was drawn with", CENTRE_Y, bottom);
+        }
     }
 
     /**

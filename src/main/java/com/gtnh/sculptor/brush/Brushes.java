@@ -313,8 +313,10 @@ public final class Brushes {
         double rSq = (r + 0.5D) * (r + 0.5D);
 
         int[] bottoms = new int[width * width];
+        int[] tops = new int[width * width];
         int[] ground = new int[width * width];
         int[] fromAnchor = new int[width * width];
+        boolean[] onGround = new boolean[width * width];
 
         java.util.ArrayDeque<Integer> frontier = new java.util.ArrayDeque<Integer>();
         boolean anyOverhang = false;
@@ -338,16 +340,24 @@ public final class Brushes {
                 while (bottom > 0 && isGround(ctx, cx + dx, bottom - 1, cz + dz)) bottom--;
 
                 bottoms[index] = bottom;
+                tops[index] = top;
                 ground[index] = wasGround;
 
                 // A column joined to the hillside has no underside to speak of -- walking down its
                 // solid run goes straight through the terrain to bedrock. Those columns are the
                 // anchor the curve springs from, and are never themselves touched.
-                if (bottom <= wasGround) {
+                onGround[index] = bottom <= wasGround;
+                if (!onGround[index]) anyOverhang = true;
+
+                // Support is not only what is underneath. An arch is built by spanning out from
+                // something that stands beside the new shape rather than below it, and defining
+                // the anchor as "this column reaches the ground" means a span like that finds no
+                // anchor at all and is left as the flat slab it was drawn as. A neighbouring
+                // column whose own material already stood as high as this one's underside is
+                // holding it up just as surely as ground would.
+                if (onGround[index] || touchesSolidBeside(groundBefore, reach, dx, dz, bottom)) {
                     fromAnchor[index] = 0;
                     frontier.add(index);
-                } else {
-                    anyOverhang = true;
                 }
             }
         }
@@ -387,8 +397,8 @@ public final class Brushes {
                 int wasGround = ground[index];
                 if (bottom == Integer.MIN_VALUE || wasGround == Integer.MIN_VALUE) continue;
 
-                // Only the hanging part is shaped. Anchored ground is left exactly as it was.
-                if (bottom <= wasGround) continue;
+                // Only the hanging part is shaped. Ground the shape already sits on is left alone.
+                if (onGround[index]) continue;
 
                 int toAnchor = fromAnchor[index];
                 int toRim = fromRim[index];
@@ -407,8 +417,16 @@ public final class Brushes {
                 // left at the shape's own base at the free edge -- so the outer face keeps its
                 // full height and the void behind it is closed by a curve. Thinning the free edge
                 // instead is the same curve upside down, and gives a wedge rather than a ledge.
-                int target = (int) Math.round(bottom - (bottom - wasGround) * eased * params.autoSmooth);
-                if (target < wasGround) target = wasGround;
+                // The underside curves down by at most the shape's own height. Letting it run all
+                // the way to whatever happens to be beneath turns a soffit into a curtain wall --
+                // measured at eighty blocks for a ten-block cylinder placed off a tower, which is
+                // the other mode's job, not this one's. Ground nearer than that is still reached,
+                // so a shape sitting on a slope still merges into it.
+                int reachDown = Math.max(1, tops[index] - bottom + 1);
+                int floor = Math.max(wasGround, bottom - reachDown);
+
+                int target = (int) Math.round(bottom - (bottom - floor) * eased * params.autoSmooth);
+                if (target < floor) target = floor;
                 if (target > bottom) target = bottom;
 
                 // Only ever fills. Everything between the new underside and the shape's base is
@@ -418,6 +436,28 @@ public final class Brushes {
                 }
             }
         }
+    }
+
+    /**
+     * Whether something that was already standing beside this column reaches its underside.
+     *
+     * <p>
+     * Read off the pre-stroke heights, which cover a wider disc than the shape does, so the
+     * columns just outside the footprint are available to ask about.
+     * </p>
+     */
+    private static boolean touchesSolidBeside(int[] groundBefore, int reach, int dx, int dz, int bottom) {
+        int reachWidth = 2 * reach + 1;
+
+        for (int side = 0; side < 4; side++) {
+            int nx = dx + ((side == 0) ? 1 : (side == 1) ? -1 : 0);
+            int nz = dz + ((side == 2) ? 1 : (side == 3) ? -1 : 0);
+            if (nx < -reach || nz < -reach || nx > reach || nz > reach) continue;
+
+            int neighbour = groundBefore[(nz + reach) * reachWidth + (nx + reach)];
+            if (neighbour != Integer.MIN_VALUE && neighbour >= bottom) return true;
+        }
+        return false;
     }
 
     /** Whether this column of the footprint has open air beside it -- the shape's free edge. */
