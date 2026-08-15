@@ -23,8 +23,11 @@ import net.minecraft.block.BlockLeavesBase;
 import net.minecraft.block.BlockLog;
 import net.minecraft.block.BlockVine;
 import net.minecraft.block.material.Material;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraft.world.gen.feature.WorldGenAbstractTree;
+import net.minecraftforge.oredict.OreDictionary;
 
 import com.gtnh.sculptor.edit.SculptorEditContext;
 import com.gtnh.sculptor.world.SculptorGenWorld;
@@ -51,6 +54,12 @@ import com.sk89q.worldedit.blocks.BlockID;
 public final class Brushes {
 
     private static final BaseBlock AIR = new BaseBlock(BlockID.AIR);
+
+    /** Memo for {@link #isLog}, indexed by block id -- 1.7.10 has 4096 of them. */
+    private static final byte UNKNOWN = 0;
+    private static final byte IS_LOG = 1;
+    private static final byte NOT_LOG = 2;
+    private static final byte[] LOG_CACHE = new byte[4096];
 
     private Brushes() {}
 
@@ -378,9 +387,33 @@ public final class Brushes {
                 // falloff is smallest, so damping by it shrinks a genuine one-block correction
                 // to a fraction and rounding then discards it entirely.
                 int desired = (int) Math.round(surface + (smoothed - surface) * params.strength);
+
+                // Cutting a column whose material does not reach that far down would clear the
+                // gap and then stamp a surface block into thin air, one per column -- which is
+                // where the floating shelves under a heavily auto-smoothed sphere came from. A
+                // ledge with nothing under it has no connected surface, so there is nothing here
+                // to smooth: leave the column exactly as it is.
+                if (desired < surface && !isSolidDown(ctx, cx + dx, cz + dz, surface, desired)) continue;
+
                 reshapeColumn(ctx, params, cx + dx, cz + dz, surface, desired);
             }
         }
+    }
+
+    /**
+     * Whether a column is unbroken ground from {@code fromY} down to {@code toY}, both included.
+     *
+     * <p>
+     * Costs no more than the cut it guards, since that walks the same span to clear it.
+     * </p>
+     */
+    private static boolean isSolidDown(SculptorEditContext ctx, int x, int z, int fromY, int toY) {
+        int top = Math.min(255, fromY);
+        int bottom = Math.max(0, toY);
+        for (int y = top; y >= bottom; y--) {
+            if (!isGround(ctx, x, y, z)) return false;
+        }
+        return true;
     }
 
     /** Mean of the 3x3 neighbourhood, skipping empty columns so they do not drag the average. */
@@ -664,10 +697,59 @@ public final class Brushes {
      * </p>
      */
     public static boolean isVegetation(BaseBlock block) {
-        if (isFoliage(block)) return true;
+        return isFoliage(block) || isLog(block);
+    }
 
-        Block mcBlock = Block.getBlockById(block.getType());
-        return mcBlock instanceof BlockLog;
+    /**
+     * Whether a block is a tree trunk, including modded ones.
+     *
+     * <p>
+     * {@code instanceof BlockLog} is not enough. Biomes O' Plenty's {@code BlockBOPLog} extends
+     * {@code Block} directly, so every BOP trunk read as ordinary terrain and the removal brush
+     * walked straight past it. Matching on the wood {@link Material} instead would be worse: it
+     * also catches planks, and would take out anything built from them.
+     * </p>
+     *
+     * <p>
+     * Three tests, cheapest first. The ore dictionary is the one mods actually agree on --
+     * {@code logWood} is registered by Forge for vanilla and by BOP for its own -- and Forge's
+     * {@code isWood} covers a mod that overrides it but forgot to register. That last call gets
+     * a null world, which vanilla and BOP both ignore; a mod that does not is caught rather than
+     * allowed to throw out of a brush stroke.
+     * </p>
+     */
+    public static boolean isLog(BaseBlock block) {
+        int id = block.getType();
+        if (id <= 0 || id >= LOG_CACHE.length) return false;
+
+        // Resolving this means an ItemStack and a set lookup, and the removal brush asks about
+        // every block in a sphere, so the answer is worked out once per block type.
+        byte cached = LOG_CACHE[id];
+        if (cached != UNKNOWN) return cached == IS_LOG;
+
+        boolean log = computeIsLog(id);
+        LOG_CACHE[id] = log ? IS_LOG : NOT_LOG;
+        return log;
+    }
+
+    private static boolean computeIsLog(int id) {
+        Block mcBlock = Block.getBlockById(id);
+        if (mcBlock == null) return false;
+        if (mcBlock instanceof BlockLog) return true;
+
+        Item item = Item.getItemFromBlock(mcBlock);
+        if (item != null) {
+            int logWood = OreDictionary.getOreID("logWood");
+            for (int ore : OreDictionary.getOreIDs(new ItemStack(item, 1, 0))) {
+                if (ore == logWood) return true;
+            }
+        }
+
+        try {
+            return mcBlock.isWood(null, 0, 0, 0);
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     public static boolean isFoliage(BaseBlock block) {

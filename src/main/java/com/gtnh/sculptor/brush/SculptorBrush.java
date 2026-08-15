@@ -15,6 +15,7 @@
 
 package com.gtnh.sculptor.brush;
 
+import com.gtnh.sculptor.edit.PlacementMask;
 import com.gtnh.sculptor.edit.SculptorEditContext;
 import com.sk89q.worldedit.MaxChangedBlocksException;
 import com.sk89q.worldedit.Vector;
@@ -107,6 +108,13 @@ public enum SculptorBrush {
     public void apply(SculptorEditContext ctx, Vector centre, BrushParams params) throws MaxChangedBlocksException {
         ctx.setMaterial(params.material);
 
+        // The auto-smooth pass has to be able to tell its own new material from the ground it
+        // was dropped into, so a restrictive mask can stop it cutting into the latter. Only
+        // worth the bookkeeping when that pass will actually run under such a mask.
+        boolean guardAutoSmooth = autoSmoothable && params.autoSmooth > 0.0D
+            && ctx.getPlacementMask() != PlacementMask.OVERWRITE;
+        if (guardAutoSmooth) ctx.trackWrites();
+
         switch (this) {
             case SPHERE:
                 Brushes.sphere(ctx, centre, params, false);
@@ -171,7 +179,16 @@ public enum SculptorBrush {
                 params.autoSmooth,
                 0.0D,
                 params.useSelectedMaterial);
-            Brushes.smooth(ctx, centre, smoothing, passes);
+
+            // "Air only" means leave what is already there alone, and the player did not ask for
+            // this pass -- so here, unlike in a brush they chose, the mask governs cutting as
+            // well as building. Undoing what the stroke just placed is still allowed.
+            if (guardAutoSmooth) ctx.setGuardRemovals(true);
+            try {
+                Brushes.smooth(ctx, centre, smoothing, passes);
+            } finally {
+                if (guardAutoSmooth) ctx.setGuardRemovals(false);
+            }
         }
     }
 

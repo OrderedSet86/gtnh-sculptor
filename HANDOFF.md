@@ -3,7 +3,7 @@
 Working notes for whoever picks this up next. Read this before touching brush or preview code —
 several things here look like free choices and are not.
 
-Current state: **0.3.0 in progress** on `main`, 25 tests green.
+Current state: **0.4.0 in progress** on `main`, 27 tests green.
 
 ---
 
@@ -89,9 +89,29 @@ and the rebind is discarded then overwritten on the next save. Use lang keys
 other value desyncs what you see from what you target. Also: **`posY` is already the eye anchor**
 for a player in 1.7.10 — the bounding box hangs below it — so do not add `getEyeHeight()`.
 
-**The placement mask must only gate placements, not removals.** Gating removals too means "air
-only" silently disables every carving brush, since none can write air over a block that is by
-definition not air.
+**The placement mask must only gate placements, not removals** — with one exception. Gating
+removals too means "air only" silently disables every carving brush, since none can write air over
+a block that is by definition not air. The exception is the auto-smooth pass, which the player did
+not choose and which lowers columns: under "air only" it was cutting into untouched ground, which
+is the one thing that setting exists to prevent. `SculptorBrush.apply` turns on
+`ctx.setGuardRemovals` for the duration of that pass only, and `ctx.trackWrites` from the start of
+the stroke so undoing the stroke's own new material is still allowed. Tracking is opt-in because
+the set of written positions grows with the brush volume, which at the server's maximum radius is
+millions of entries.
+
+**A surface is not the same thing as ground.** The height map cannot tell a two-block ledge over a
+drop from a hillside — both are the top of a column. Lowering one clears the gap beneath it and
+stamps a fresh surface block into thin air, one per column, which is a floating shelf; that is
+where the floating islands under a heavily auto-smoothed sphere came from. `Brushes.smooth` refuses
+to cut a column that is not solid all the way down to where the cut would end. Deliberately only in
+`smooth`: a player who picks the lower brush and aims at a floating platform means it.
+
+**Modded logs do not extend `BlockLog`.** Biomes O' Plenty's `BlockBOPLog` extends `Block`
+directly, so `instanceof BlockLog` missed every BOP trunk and the removal brush walked past it.
+Matching the wood `Material` instead is worse — it catches planks, and takes out anything built
+from them. `Brushes.isLog` asks the `logWood` ore dictionary entry, which Forge registers for
+vanilla and BOP registers for its own, and memoises the answer per block id because the removal
+brush asks about every block in a sphere.
 
 **Biome tree generators are shared and stateful.** `BiomeGenBase.func_150567_a` returns instances
 held on the biome singleton, and `WorldGenBigTree` stores the world in a field that Forge nulls on
@@ -154,7 +174,9 @@ check was deliberately broken:
 **Minecraft's registries are not bootstrapped headlessly.** `Block.getBlockById` returns null, so
 material-based checks and all tree generation do nothing in a unit test. `SculptorBrush.TREE` is
 excluded from the equivalence loop for this reason. Anything relying on the registry needs
-in-game verification — say so rather than implying it is covered. The one exception worth knowing:
+in-game verification — say so rather than implying it is covered. `Brushes.isLog` is entirely
+uncovered for the same reason: block lookup and the ore dictionary both need a running game. The
+one exception worth knowing:
 `isFoliage` matches mushroom caps and `DOUBLE_PLANT` by block id *before* it consults the registry,
 so those three are the only plants a headless test can use as plants — anything else reads as
 solid terrain and proves nothing.

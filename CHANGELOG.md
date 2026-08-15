@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0
+
+### Fixes
+
+- **"Air only" now binds the auto-smooth pass.** The placement mask governs building rather
+  than carving, so that choosing "air only" does not silently disable every brush that
+  removes blocks. Auto-smooth is the exception: it is a pass you did not ask for, and it
+  lowers columns, so it was eating the ground around whatever had just been placed — the
+  one thing that setting exists to prevent. It may still cut back material the same stroke
+  placed, which was never protected ground.
+- **Smoothing no longer strands material in mid-air.** A ledge with nothing under it still
+  reads as a surface to the height map, so smoothing cleared the gap beneath it and stamped
+  a fresh surface block into thin air, one per column — a floating shelf. There is no
+  connected surface there to smooth, so those columns are now left exactly as they are.
+  This is what produced floating islands when a sphere was dropped into a steep hillside
+  with auto-smooth turned up.
+- **Foliage removal strips modded tree trunks.** It matched `BlockLog`, and Biomes O' Plenty
+  logs extend `Block` directly, so every BOP trunk read as ordinary terrain and the brush
+  walked past it. Trunks are now identified by the `logWood` ore dictionary entry as well,
+  which is the thing mods actually agree on, with Forge's `isWood` as a further fallback.
+
+
 ## 0.3.1
 
 **No changes to the mod.** The jar behaves exactly as 0.3.0 does; there is no reason to

@@ -114,8 +114,48 @@ public class BrushBehaviourTest {
         }
     }
 
+    /**
+     * A two-block ledge jutting out over nothing, beside ground ten blocks lower.
+     *
+     * <p>
+     * This is the shape a sphere leaves when it is dropped into a steep hillside and part of it
+     * hangs out over the drop. The ledge matters because its top is level with what the probe is
+     * already walking along, so the height map picks it up as a surface like any other -- while
+     * having only two blocks of material under it.
+     * </p>
+     */
+    private static final int LEDGE_Y = 80;
+    private static final int VALLEY_Y = 70;
+
+    private static class LedgeWorld extends NullWorld {
+
+        @Override
+        public BaseBlock getBlock(Vector position) {
+            int y = position.getBlockY();
+
+            if (position.getBlockX() < 0) {
+                boolean ledge = y == LEDGE_Y || y == LEDGE_Y - 1;
+                return new BaseBlock(ledge ? BlockID.STONE : BlockID.AIR);
+            }
+
+            if (y > VALLEY_Y) return new BaseBlock(BlockID.AIR);
+            if (y == VALLEY_Y) return new BaseBlock(BlockID.GRASS);
+            if (y >= VALLEY_Y - 3) return new BaseBlock(BlockID.DIRT);
+            return new BaseBlock(BlockID.STONE);
+        }
+
+        @Override
+        public BaseBlock getLazyBlock(Vector position) {
+            return getBlock(position);
+        }
+    }
+
     private static BrushParams params(int radius, double strength) {
         return new BrushParams(radius, new BaseBlock(BlockID.STONE), 1, strength, 0.0D, false);
+    }
+
+    private static BrushParams smoothingParams(int radius, double strength, double autoSmooth) {
+        return new BrushParams(radius, new BaseBlock(BlockID.STONE), 1, strength, autoSmooth, false);
     }
 
     /**
@@ -360,6 +400,73 @@ public class BrushBehaviourTest {
      * the lowering pass clears and used to survive the column dropping out from under it.
      * </p>
      */
+    /**
+     * "Air only" has to bind the auto-smooth pass as well.
+     *
+     * <p>
+     * The mask governs building, not carving, so that choosing it does not silently disable
+     * every brush that removes blocks. But auto-smooth is a pass the player did not ask for, and
+     * it lowers columns -- so under "air only" it was quietly eating the ground around whatever
+     * had just been placed, which is the one thing that setting exists to prevent.
+     * </p>
+     */
+    @Test
+    public void autoSmoothUnderAirOnlyDoesNotCutIntoExistingGround() throws Exception {
+        SculptorEditContext ctx = SculptorEditContext.preview(new CliffWorld());
+        ctx.setPlacementMask(PlacementMask.AIR_ONLY);
+        // Beside the cliff, so the smoothing pass reaches ground far higher than the placement
+        // and wants to pull it down.
+        SculptorBrush.SPHERE.apply(ctx, new Vector(-1, LOW_Y, 0), smoothingParams(4, 1.0D, 0.8D));
+
+        CliffWorld before = new CliffWorld();
+        for (Map.Entry<BlockVector, BaseBlock> change : ctx.getPendingChanges()
+            .entrySet()) {
+            if (change.getValue()
+                .getType() != BlockID.AIR) continue;
+
+            assertEquals(
+                "air-only must not remove the block that was already at " + change.getKey(),
+                BlockID.AIR,
+                before.getBlock(change.getKey())
+                    .getType());
+        }
+
+        // An inert brush would satisfy the loop above by changing nothing.
+        assertTrue("the sphere should still have been placed", !ctx.isAir(new Vector(-1, LOW_Y + 2, 0)));
+    }
+
+    /**
+     * Smoothing must not leave material hanging in the air.
+     *
+     * <p>
+     * A ledge with nothing under it still reads as a surface to the height map, so smoothing
+     * would clear the gap beneath it and stamp a fresh surface block into thin air -- one per
+     * column, which is a floating shelf. There is no connected surface there to smooth, so the
+     * column is left exactly as it is.
+     * </p>
+     */
+    @Test
+    public void smoothLeavesUnsupportedLedgesAlone() throws Exception {
+        SculptorEditContext ctx = SculptorEditContext.preview(new LedgeWorld());
+        SculptorBrush.SMOOTH.apply(ctx, new Vector(0, LEDGE_Y, 0), params(6, 1.0D));
+
+        assertTrue(
+            "smooth should have changed something",
+            !ctx.getPendingChanges()
+                .isEmpty());
+
+        for (Map.Entry<BlockVector, BaseBlock> change : ctx.getPendingChanges()
+            .entrySet()) {
+            if (change.getValue()
+                .getType() == BlockID.AIR) continue;
+
+            BlockVector pos = change.getKey();
+            assertTrue(
+                "solid block written at " + pos + " has nothing under it",
+                !ctx.isAir(new Vector(pos.getBlockX(), pos.getBlockY() - 1, pos.getBlockZ())));
+        }
+    }
+
     @Test
     public void lowerDoesNotLeaveFoliageFloating() throws Exception {
         SculptorEditContext ctx = SculptorEditContext.preview(new PlantedWorld());

@@ -16,7 +16,9 @@
 package com.gtnh.sculptor.edit;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import com.sk89q.worldedit.BlockVector;
 import com.sk89q.worldedit.EditSession;
@@ -62,6 +64,10 @@ public class SculptorEditContext {
     private PlacementMask placementMask = PlacementMask.OVERWRITE;
     private BaseBlock material = AIR;
 
+    /** Positions this stroke has written, or null when nobody asked to keep track. */
+    private Set<BlockVector> written;
+    private boolean guardRemovals;
+
     private int changeCount;
 
     private SculptorEditContext(EditSession session, World world, PreviewBuffer buffer) {
@@ -90,6 +96,45 @@ public class SculptorEditContext {
 
     public void setPlacementMask(PlacementMask mask) {
         this.placementMask = (mask != null) ? mask : PlacementMask.OVERWRITE;
+    }
+
+    public PlacementMask getPlacementMask() {
+        return placementMask;
+    }
+
+    /**
+     * Start remembering every position written, so removals can later be told apart from
+     * removals of untouched terrain.
+     *
+     * <p>
+     * Off by default, and switched on only for a stroke that is going to need it -- the set
+     * grows with the volume of the brush, which at the server's maximum radius is millions of
+     * positions.
+     * </p>
+     */
+    public void trackWrites() {
+        if (written == null) written = new HashSet<BlockVector>();
+    }
+
+    /**
+     * Hold removals to the same standard as placements.
+     *
+     * <p>
+     * Normally the mask governs only what may be built <em>over</em>: gating removals as well
+     * would mean "air only" silently disabled every brush that carves, since none of them can
+     * write air over a block that is by definition not air.
+     * </p>
+     *
+     * <p>
+     * The auto-smooth pass is the exception, because the player did not ask for it. Cutting into
+     * untouched ground is exactly what "air only" says not to do, so during that pass a removal
+     * has to satisfy the mask too -- unless it is undoing something this same stroke placed,
+     * which was never protected terrain to begin with. Needs {@link #trackWrites()} to have been
+     * on from the start of the stroke.
+     * </p>
+     */
+    public void setGuardRemovals(boolean guard) {
+        this.guardRemovals = guard;
     }
 
     /** The brush material, needed by {@link PlacementMask#REPLACE_MATERIAL}. */
@@ -133,8 +178,11 @@ public class SculptorEditContext {
         // carves -- erode, lower, foliage removal -- since none of them can write air over a
         // block that is by definition not air.
         boolean placing = block.getType() != BlockID.AIR;
-        if (placing && !placementMask.allows(getBlock(position), material)) {
-            return false;
+        BlockVector key = position.toBlockVector();
+
+        boolean ours = written != null && written.contains(key);
+        if (placing || (guardRemovals && !ours)) {
+            if (!placementMask.allows(getBlock(position), material)) return false;
         }
 
         if (buffer != null) {
@@ -142,6 +190,7 @@ public class SculptorEditContext {
         } else {
             session.setBlock(position, block);
         }
+        if (written != null) written.add(key);
         changeCount++;
         return true;
     }
