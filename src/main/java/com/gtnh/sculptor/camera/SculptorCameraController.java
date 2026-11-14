@@ -1,35 +1,22 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.camera;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.ToDoubleFunction;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityClientPlayerMP;
-import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.settings.GameSettings;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.potion.PotionEffect;
-import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovementInput;
+import net.minecraft.util.StatCollector;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 
 import org.lwjgl.input.Keyboard;
 
+import com.gtnh.sculptor.SculptorChat;
 import com.gtnh.sculptor.camera.CameraSettings.PathSpeed;
 
 import cpw.mods.fml.client.registry.ClientRegistry;
@@ -38,36 +25,20 @@ import cpw.mods.fml.common.gameevent.InputEvent.KeyInputEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 
 /**
- * Free camera and keyframed camera paths.
+ * The free camera, and the recording and playback of keyframed camera paths.
  *
  * <p>
- * Minecraft renders from {@code Minecraft.renderViewEntity}, so detaching the camera is a
- * matter of pointing that at a {@link SculptorCamera} and driving it ourselves. Mouse look is
- * left alone: the real player still turns with the mouse and the camera copies its orientation,
- * which gives ordinary look controls without touching the input pipeline.
- * </p>
- *
- * <p>
- * Movement is the part that needs care -- WASD would otherwise walk the real player off while
- * you fly around. Rather than intercept input with a mixin, the player's {@link MovementInput}
- * is swapped for a plain base instance whose {@code updatePlayerMoveState} does nothing, so the
- * player simply reads no input until the camera is put away.
+ * {@code attach()} sets {@code Minecraft.renderViewEntity} to a {@link SculptorCamera}. The real player still turns
+ * with the mouse, and {@code applyFreeMovement()} copies the rotation of the player to the camera each tick. The
+ * movement input of the player is replaced with a plain {@link MovementInput}. A plain {@link MovementInput} reads no
+ * keys, so only the camera moves.
  * </p>
  */
 public class SculptorCameraController {
 
-    /**
-     * Key descriptions must not contain a colon.
-     *
-     * <p>
-     * {@code GameSettings} persists bindings as {@code key_<description>:<code>} and parses them
-     * back with {@code split(":")}, comparing only the first field. A description like
-     * "Sculptor: play camera path" splits in the wrong place, matches nothing on load, and the
-     * rebind is silently discarded and then overwritten on the next save.
-     * </p>
-     */
+    // `GameSettings` saves a binding as key_<description>:<code> and splits the line on ':'. A description with a colon
+    // never matches on load, so use lang keys
     private static final String CATEGORY = "key.categories.sculptor";
-
     private static final KeyBinding TOGGLE_KEY = new KeyBinding("key.sculptor.camera.toggle", Keyboard.KEY_C, CATEGORY);
     private static final KeyBinding ADD_SLOW_KEY = new KeyBinding(
         "key.sculptor.camera.keyframe.slow",
@@ -89,19 +60,25 @@ public class SculptorCameraController {
 
     private static final int TICKS_PER_SECOND = 20;
 
+    // set by the constructor. ClientProxy creates one controller, and the panel and /scpath get the path from
+    // instance()
     private static SculptorCameraController instance;
 
-    private final List<CameraKeyframe> path = new ArrayList<CameraKeyframe>();
+    private final List<CameraKeyframe> path = new ArrayList<>();
 
     private SculptorCamera camera;
     private MovementInput savedInput;
 
     private boolean playing;
     private int playTick;
-
-    /** Tick length of each segment, derived from its length and its destination's speed tier. */
     private int[] segmentTicks;
     private int totalTicks;
+
+    private String hudLine = "";
+    private boolean hudPlaying;
+    private int hudTick = -1;
+    private int hudFlySpeed = -1;
+    private int hudPathSize = -1;
 
     public SculptorCameraController() {
         ClientRegistry.registerKeyBinding(TOGGLE_KEY);
@@ -114,36 +91,32 @@ public class SculptorCameraController {
         instance = this;
     }
 
-    /**
-     * The one controller, created by {@code ClientProxy}. The path lives on it, so the panel and
-     * the {@code /scpath} command both need a way in.
-     */
+    /** The controller that {@code ClientProxy} creates, or {@code null} on a dedicated server. */
     public static SculptorCameraController instance() {
         return instance;
     }
 
-    public boolean isActive() {
-        return camera != null;
-    }
-
-    /** A copy: the path is only changed through {@link #setPath}, so timings cannot go stale. */
+    /** A copy of the path. */
     public List<CameraKeyframe> getPath() {
-        return new ArrayList<CameraKeyframe>(path);
+        return new ArrayList<>(path);
     }
 
     /**
-     * Replace the whole path. Playback stops rather than continuing into keyframes it was not
-     * timed against -- {@code segmentTicks} is computed once when play starts.
+     * Replace the path, and stop playback. {@code togglePlayback()} computes {@code segmentTicks} once, at the start of
+     * playback.
      */
     public void setPath(List<CameraKeyframe> keyframes) {
         playing = false;
         path.clear();
-        if (keyframes != null) path.addAll(keyframes);
+        path.addAll(keyframes);
     }
 
+    /**
+     * Handle the camera keys: toggle the free camera, clear the path, add a keyframe of a speed tier, and play or stop.
+     */
     @SubscribeEvent
     public void onKey(KeyInputEvent event) {
-        Minecraft mc = Minecraft.getMinecraft();
+        final Minecraft mc = Minecraft.getMinecraft();
         if (mc.thePlayer == null || mc.theWorld == null) return;
 
         if (TOGGLE_KEY.isPressed()) {
@@ -157,7 +130,7 @@ public class SculptorCameraController {
         if (CLEAR_KEY.isPressed()) {
             path.clear();
             playing = false;
-            say(mc, "Sculptor: camera path cleared");
+            SculptorChat.sendTranslated(mc.thePlayer, "sculptor.camera.cleared");
         }
 
         if (ADD_SLOW_KEY.isPressed()) addKeyframe(mc, PathSpeed.SLOW);
@@ -169,32 +142,40 @@ public class SculptorCameraController {
         }
     }
 
-    private void attach(Minecraft mc) {
-        EntityClientPlayerMP player = mc.thePlayer;
+    public boolean isActive() {
+        return camera != null;
+    }
 
-        // posY is already the eye anchor for a player in 1.7.10 -- the bounding box hangs
-        // below it by yOffset -- so adding eye height again would start the camera high.
+    /**
+     * Turn on the free camera at the eye position and the rotation of the player, and stop the movement input of the
+     * player.
+     */
+    private void attach(Minecraft mc) {
+        final EntityClientPlayerMP player = mc.thePlayer;
+
+        // in 1.7.10 the posY of a player is at eye height. The bounding box hangs yOffset below posY
         camera = new SculptorCamera(
             mc.theWorld,
-            player.posX,
-            player.posY,
-            player.posZ,
-            player.rotationYaw,
-            player.rotationPitch);
+            new CameraPose(player.posX, player.posY, player.posZ, player.rotationYaw, player.rotationPitch));
 
         mc.renderViewEntity = camera;
 
-        // Freeze the real player: the base MovementInput reads nothing, so WASD reaches the
-        // camera only.
         savedInput = player.movementInput;
         player.movementInput = new MovementInput();
         player.motionX = player.motionY = player.motionZ = 0.0D;
 
-        say(mc, "Sculptor: free camera ON  [J/K/M] keyframe slow/normal/fast  [P] play  [Del] clear");
+        SculptorChat.sendTranslated(
+            player,
+            "sculptor.camera.on",
+            keyName(ADD_SLOW_KEY),
+            keyName(ADD_NORMAL_KEY),
+            keyName(ADD_FAST_KEY),
+            keyName(PLAY_KEY),
+            keyName(CLEAR_KEY));
     }
 
     private void detach(Minecraft mc) {
-        EntityClientPlayerMP player = mc.thePlayer;
+        final EntityClientPlayerMP player = mc.thePlayer;
 
         mc.renderViewEntity = player;
         if (savedInput != null) {
@@ -204,68 +185,72 @@ public class SculptorCameraController {
         camera = null;
         playing = false;
 
-        say(mc, "Sculptor: free camera OFF");
+        SculptorChat.sendTranslated(player, "sculptor.camera.off");
     }
 
     private void addKeyframe(Minecraft mc, PathSpeed speed) {
         if (!isActive()) {
-            say(mc, "Sculptor: enable the free camera first");
+            SculptorChat.sendTranslated(mc.thePlayer, "sculptor.camera.inactive");
             return;
         }
         path.add(
-            new CameraKeyframe(camera.posX, camera.posY, camera.posZ, camera.rotationYaw, camera.rotationPitch, speed));
-        say(mc, "Sculptor: keyframe " + path.size() + " added (" + speed.label() + " approach)");
+            new CameraKeyframe(
+                new CameraPose(camera.posX, camera.posY, camera.posZ, camera.rotationYaw, camera.rotationPitch),
+                speed));
+        SculptorChat.sendTranslated(
+            mc.thePlayer,
+            "sculptor.camera.keyframe_added",
+            path.size(),
+            StatCollector.translateToLocal(speed.getLangKey()));
     }
 
     private void togglePlayback(Minecraft mc) {
         if (!isActive()) {
-            say(mc, "Sculptor: enable the free camera first");
+            SculptorChat.sendTranslated(mc.thePlayer, "sculptor.camera.inactive");
             return;
         }
         if (playing) {
-            stopPlayback(mc, "Sculptor: playback stopped");
+            stopPlayback(mc, "sculptor.camera.stopped");
             return;
         }
         if (path.size() < 2) {
-            say(mc, "Sculptor: need at least 2 keyframes");
+            SculptorChat.sendTranslated(mc.thePlayer, "sculptor.camera.too_few_keyframes");
             return;
         }
 
         computeSegmentTimings();
         playing = true;
         playTick = 0;
-        say(mc, String.format("Sculptor: playing %d keyframes over %.1fs", path.size(), totalTicks / 20.0D));
+        SculptorChat.sendTranslated(mc.thePlayer, "sculptor.camera.playing", path.size(), formatSeconds(totalTicks));
     }
 
     /**
-     * Work out how long each segment should take.
-     *
-     * <p>
-     * A segment's duration is its length divided by the speed of the keyframe it arrives at, so
-     * the camera holds a constant rate rather than a constant time. That is what makes a long
-     * establishing move and a short detail move feel like the same camera.
-     * </p>
+     * Compute the ticks of each segment: the segment length over the speed of the keyframe at the end of the segment.
+     * The camera then moves at a constant rate, not in a constant time per segment.
      */
     private void computeSegmentTimings() {
-        CameraSettings settings = CameraSettings.instance();
-        int segments = path.size() - 1;
+        final CameraSettings settings = CameraSettings.instance();
+        final int segments = path.size() - 1;
 
         segmentTicks = new int[segments];
         totalTicks = 0;
 
         for (int i = 0; i < segments; i++) {
-            CameraKeyframe from = path.get(i);
-            CameraKeyframe to = path.get(i + 1);
+            final CameraPose from = path.get(i)
+                .pose();
+            final CameraKeyframe to = path.get(i + 1);
 
-            double dx = to.x - from.x;
-            double dy = to.y - from.y;
-            double dz = to.z - from.z;
-            double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            final double dx = to.pose()
+                .x() - from.x();
+            final double dy = to.pose()
+                .y() - from.y();
+            final double dz = to.pose()
+                .z() - from.z();
+            final double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-            double blocksPerSecond = settings.getPathSpeed(to.speed);
-            // A segment with no travel still needs a tick to turn the camera through, so this
-            // never rounds down to zero.
-            int ticks = (int) Math.max(1, Math.round(distance / blocksPerSecond * TICKS_PER_SECOND));
+            final double blocksPerSecond = settings.getPathSpeed(to.speed());
+            // a segment with no travel still turns the camera, so the segment gets at least one tick
+            final int ticks = (int) Math.max(1, Math.round(distance / blocksPerSecond * TICKS_PER_SECOND));
 
             segmentTicks[i] = ticks;
             totalTicks += ticks;
@@ -273,16 +258,10 @@ public class SculptorCameraController {
     }
 
     /**
-     * End playback, leaving the camera exactly where the path left it.
-     *
-     * <p>
-     * Free movement takes its orientation from the real player, who never turned while the path
-     * was playing. Without handing the camera's final angles back, the view would snap to
-     * whatever direction the player happened to be facing the moment playback stopped -- which
-     * reads as a jarring cut, usually toward terrain that has not been rendered yet.
-     * </p>
+     * End playback, and give the player the final rotation of the camera. In free movement, the rotation of the camera
+     * comes from the player, so without the copy the view jumps to the direction the player faced before playback.
      */
-    private void stopPlayback(Minecraft mc, String message) {
+    private void stopPlayback(Minecraft mc, String langKey) {
         playing = false;
         if (camera != null && mc.thePlayer != null) {
             mc.thePlayer.rotationYaw = camera.rotationYaw;
@@ -290,28 +269,29 @@ public class SculptorCameraController {
             mc.thePlayer.prevRotationYaw = camera.rotationYaw;
             mc.thePlayer.prevRotationPitch = camera.rotationPitch;
         }
-        say(mc, message);
+        SculptorChat.sendTranslated(mc.thePlayer, langKey);
     }
 
+    /**
+     * Move the camera each client tick: along the path during playback, and by the movement keys otherwise. The free
+     * camera turns off when the world of the player changes.
+     */
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !isActive()) return;
 
-        Minecraft mc = Minecraft.getMinecraft();
+        final Minecraft mc = Minecraft.getMinecraft();
         if (mc.thePlayer == null || mc.theWorld == null) {
             return;
         }
 
-        // The world can change underneath us (dimension change, disconnect); a camera holding a
-        // stale world would render nothing useful.
+        // a dimension change or a disconnect replaces the world. The camera is in the previous world
         if (camera.worldObj != mc.theWorld) {
             detach(mc);
             return;
         }
 
-        // Keep the player pinned while the camera is out, so physics does not drift it.
         mc.thePlayer.motionX = mc.thePlayer.motionY = mc.thePlayer.motionZ = 0.0D;
-
         syncViewState(mc);
 
         if (playing) {
@@ -322,25 +302,19 @@ public class SculptorCameraController {
     }
 
     /**
-     * Copy the player's potion effects and creative flag onto the camera each tick.
+     * Copy the potion effects and the creative flag of the player to the camera, each tick.
      *
      * <p>
-     * Plenty of the render path is keyed on {@code renderViewEntity} rather than the player:
-     * {@code updateFogColor} gates night vision on it, so fog and sky stay dark without this;
-     * {@code setupFog} reads {@code capabilities.isCreativeMode} off it, so void fog appears for
-     * a creative player; and Angelica's Iris {@code CommonUniforms} reads it to drive the
-     * shader's night-vision uniform, which is where the effect is most visibly lost.
+     * Parts of the renderer read {@code renderViewEntity}, not the player. {@code EntityRenderer.updateFogColor()}
+     * checks night vision on the camera, {@code setupFog()} reads {@code capabilities.isCreativeMode} from the camera,
+     * and the {@code CommonUniforms} of Angelica read the night vision of the camera for the shader uniform.
      * </p>
      *
      * <p>
-     * This resyncs every tick rather than copying once on attach, for three reasons. The camera
-     * is never added to the world and never ticked, so durations would freeze -- and night
-     * vision flickers below 200 ticks remaining, so a frozen duration either flickers forever or
-     * never does. {@code addPotionEffect} combines with an existing effect rather than replacing
-     * it, so re-adding without clearing would inflate amplifiers. And {@code updateFogColor}
-     * gates on the camera but then calls {@code getNightVisionBrightness(mc.thePlayer, ...)},
-     * which dereferences the player's effect unguarded -- camera-has-it while player-does-not is
-     * a hard crash in the render loop, which resyncing from the player makes impossible.
+     * A copy on attach is not enough. The camera is never ticked, so the duration of a copied effect does not count
+     * down, and night vision flickers below 200 ticks left. {@code addPotionEffect()} merges with an effect the camera
+     * has, so clear the effects first. {@code updateFogColor()} checks the camera and then reads the effect of the
+     * player with no null check, so the camera must never have an effect that the player does not.
      * </p>
      */
     private void syncViewState(Minecraft mc) {
@@ -352,10 +326,14 @@ public class SculptorCameraController {
         }
     }
 
+    /**
+     * Move the free camera by the movement keys at the fly speed, times the sprint multiplier while sprint is down.
+     * Forward and back follow the yaw and the pitch, strafe follows the yaw, and jump and sneak move straight up and
+     * down.
+     */
     private void applyFreeMovement(Minecraft mc) {
-        // Mouse look still turns the real player, so the camera simply follows its orientation.
-        float yaw = mc.thePlayer.rotationYaw;
-        float pitch = mc.thePlayer.rotationPitch;
+        final float yaw = mc.thePlayer.rotationYaw;
+        final float pitch = mc.thePlayer.rotationPitch;
 
         double forward = 0.0D;
         double strafe = 0.0D;
@@ -368,7 +346,7 @@ public class SculptorCameraController {
         if (mc.gameSettings.keyBindJump.getIsKeyPressed()) vertical += 1.0D;
         if (mc.gameSettings.keyBindSneak.getIsKeyPressed()) vertical -= 1.0D;
 
-        CameraSettings settings = CameraSettings.instance();
+        final CameraSettings settings = CameraSettings.instance();
         double speed = settings.getFlySpeed() / TICKS_PER_SECOND;
         if (mc.gameSettings.keyBindSprint.getIsKeyPressed()) {
             speed *= settings.getSprintMultiplier();
@@ -379,17 +357,16 @@ public class SculptorCameraController {
         double z = camera.posZ;
 
         if (forward != 0.0D || strafe != 0.0D) {
-            // Fly along the direction actually being looked at, including pitch, which is what
-            // makes a free camera feel like a camera rather than a walking player.
-            double yawRad = Math.toRadians(yaw);
-            double pitchRad = Math.toRadians(pitch);
+            // forward follows the pitch too, so the camera flies in the view direction
+            final double yawRad = Math.toRadians(yaw);
+            final double pitchRad = Math.toRadians(pitch);
 
-            double lookX = -Math.sin(yawRad) * Math.cos(pitchRad);
-            double lookY = -Math.sin(pitchRad);
-            double lookZ = Math.cos(yawRad) * Math.cos(pitchRad);
+            final double lookX = -Math.sin(yawRad) * Math.cos(pitchRad);
+            final double lookY = -Math.sin(pitchRad);
+            final double lookZ = Math.cos(yawRad) * Math.cos(pitchRad);
 
-            double rightX = Math.cos(yawRad);
-            double rightZ = Math.sin(yawRad);
+            final double rightX = Math.cos(yawRad);
+            final double rightZ = Math.sin(yawRad);
 
             x += (lookX * forward + rightX * strafe) * speed;
             y += (lookY * forward) * speed;
@@ -398,17 +375,16 @@ public class SculptorCameraController {
 
         y += vertical * speed;
 
-        camera.moveTo(x, y, z, yaw, pitch);
+        camera.moveTo(new CameraPose(x, y, z, yaw, pitch));
     }
 
+    /** Move the camera to the pose of the current tick of the path, and stop after the last tick. */
     private void advancePlayback(Minecraft mc) {
         if (playTick >= totalTicks) {
-            stopPlayback(mc, "Sculptor: playback finished");
+            stopPlayback(mc, "sculptor.camera.finished");
             return;
         }
 
-        // Walk the cumulative timings to find which segment this tick falls in. Segments have
-        // different lengths now, so this cannot be a division.
         int segment = 0;
         int ticksIntoSegment = playTick;
         while (segment < segmentTicks.length - 1 && ticksIntoSegment >= segmentTicks[segment]) {
@@ -416,71 +392,104 @@ public class SculptorCameraController {
             segment++;
         }
 
-        double t = ticksIntoSegment / (double) segmentTicks[segment];
+        final double t = ticksIntoSegment / (double) segmentTicks[segment];
 
-        CameraKeyframe p0 = path.get(Math.max(0, segment - 1));
-        CameraKeyframe p1 = path.get(segment);
-        CameraKeyframe p2 = path.get(Math.min(path.size() - 1, segment + 1));
-        CameraKeyframe p3 = path.get(Math.min(path.size() - 1, segment + 2));
+        final CameraPose p1 = path.get(segment)
+            .pose();
+        final CameraPose p2 = path.get(Math.min(path.size() - 1, segment + 1))
+            .pose();
 
-        double x = catmullRom(p0.x, p1.x, p2.x, p3.x, t);
-        double y = catmullRom(p0.y, p1.y, p2.y, p3.y, t);
-        double z = catmullRom(p0.z, p1.z, p2.z, p3.z, t);
+        final double x = interpolateAxis(CameraPose::x, segment, t);
+        final double y = interpolateAxis(CameraPose::y, segment, t);
+        final double z = interpolateAxis(CameraPose::z, segment, t);
 
-        // Angles are interpolated linearly along the shortest arc rather than with a spline:
-        // overshoot in position reads as a smooth arc, but overshoot in yaw reads as a wobble.
-        float yaw = p1.yaw + (float) (wrapDegrees(p2.yaw - p1.yaw) * t);
-        float pitch = p1.pitch + (float) ((p2.pitch - p1.pitch) * t);
+        // the spline overshoots between keyframes. In position the overshoot is a smooth arc, in yaw a wobble, so the
+        // angles are linear along the shortest arc
+        final float yaw = p1.yaw() + (float) (MathHelper.wrapAngleTo180_double(p2.yaw() - p1.yaw()) * t);
+        final float pitch = p1.pitch() + (float) ((p2.pitch() - p1.pitch()) * t);
 
+        final CameraPose pose = new CameraPose(x, y, z, yaw, pitch);
         if (playTick == 0) {
-            // The jump from wherever the camera was parked to the first keyframe is a cut, not
-            // a movement; interpolating it would smear across the gap for one frame.
-            camera.setPositionAndRotationDirect(x, y, z, yaw, pitch);
+            // the move from the parked camera to the first keyframe is a cut. Interpolation would smear the cut over a
+            // frame
+            camera.teleportTo(pose);
         } else {
-            camera.moveTo(x, y, z, yaw, pitch);
+            camera.moveTo(pose);
         }
         playTick++;
     }
 
     /**
-     * Catmull-Rom spline through p1 and p2, shaped by their neighbours. Passes through every
-     * keyframe, which a plain Bezier would not.
+     * Interpolate one axis of the pose along a segment, by a Catmull-Rom spline from keyframe {@code segment} to the
+     * next, shaped by the keyframes before and after the segment. The spline passes through every keyframe.
      */
-    private static double catmullRom(double p0, double p1, double p2, double p3, double t) {
-        double t2 = t * t;
-        double t3 = t2 * t;
+    private double interpolateAxis(ToDoubleFunction<CameraPose> axis, int segment, double t) {
+        final int last = path.size() - 1;
+        final double p0 = axis.applyAsDouble(
+            path.get(Math.max(0, segment - 1))
+                .pose());
+        final double p1 = axis.applyAsDouble(
+            path.get(segment)
+                .pose());
+        final double p2 = axis.applyAsDouble(
+            path.get(Math.min(last, segment + 1))
+                .pose());
+        final double p3 = axis.applyAsDouble(
+            path.get(Math.min(last, segment + 2))
+                .pose());
+        final double t2 = t * t;
+        final double t3 = t2 * t;
         return 0.5D * ((2.0D * p1) + (-p0 + p2) * t
             + (2.0D * p0 - 5.0D * p1 + 4.0D * p2 - p3) * t2
             + (-p0 + 3.0D * p1 - 3.0D * p2 + p3) * t3);
-    }
-
-    private static double wrapDegrees(double degrees) {
-        return MathHelper.wrapAngleTo180_double(degrees);
     }
 
     @SubscribeEvent
     public void onRenderOverlay(RenderGameOverlayEvent.Post event) {
         if (!isActive() || event.type != RenderGameOverlayEvent.ElementType.TEXT) return;
 
-        Minecraft mc = Minecraft.getMinecraft();
-        ScaledResolution res = new ScaledResolution(mc, mc.displayWidth, mc.displayHeight);
-
-        String line;
-        if (playing) {
-            line = String.format("Camera  playing  %.1fs / %.1fs", playTick / 20.0D, totalTicks / 20.0D);
-        } else {
-            line = String.format(
-                "Camera  free  %.0f b/s  %d keyframes  [J/K/M] add  [P] play  [Del] clear",
-                CameraSettings.instance()
-                    .getFlySpeed(),
-                path.size());
-        }
-
-        mc.fontRenderer.drawStringWithShadow(line, 4, res.getScaledHeight() - 32, 0xFF66CCFF);
+        final int hudTop = 32;
+        final int hudColor = 0xFF66CCFF;
+        updateHudLine();
+        Minecraft.getMinecraft().fontRenderer
+            .drawStringWithShadow(hudLine, 4, event.resolution.getScaledHeight() - hudTop, hudColor);
     }
 
-    private static void say(Minecraft mc, String message) {
-        mc.thePlayer.addChatMessage(new ChatComponentText(message));
+    /** Rebuild the HUD text when a value in the text changes. The overlay event fires each frame. */
+    private void updateHudLine() {
+        final int flySpeed = (int) Math.round(
+            CameraSettings.instance()
+                .getFlySpeed());
+        if (!(playing != hudPlaying || playTick != hudTick || flySpeed != hudFlySpeed || path.size() != hudPathSize)) {
+            return;
+        }
+
+        hudPlaying = playing;
+        hudTick = playTick;
+        hudFlySpeed = flySpeed;
+        hudPathSize = path.size();
+        hudLine = playing
+            ? StatCollector.translateToLocalFormatted(
+                "sculptor.camera.hud.playing",
+                formatSeconds(playTick),
+                formatSeconds(totalTicks))
+            : StatCollector.translateToLocalFormatted(
+                "sculptor.camera.hud.free",
+                flySpeed,
+                path.size(),
+                keyName(ADD_SLOW_KEY),
+                keyName(ADD_NORMAL_KEY),
+                keyName(ADD_FAST_KEY),
+                keyName(PLAY_KEY),
+                keyName(CLEAR_KEY));
+    }
+
+    private static String formatSeconds(int ticks) {
+        return String.format("%.1f", ticks / (double) TICKS_PER_SECOND);
+    }
+
+    private static String keyName(KeyBinding key) {
+        return GameSettings.getKeyDisplayString(key.getKeyCode());
     }
 
 }

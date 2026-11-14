@@ -1,46 +1,25 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.command;
 
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import net.minecraft.command.CommandBase;
+import net.minecraft.command.CommandException;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.util.ChatComponentText;
 
+import com.gtnh.sculptor.SculptorChat;
 import com.gtnh.sculptor.edit.SculptorHistory;
 import com.sk89q.worldedit.forge.ForgePlayer;
 import com.sk89q.worldedit.forge.ForgeWorldEdit;
 
 /**
- * Undo and redo for Sculptor's own edits.
+ * The server commands {@code /scu} and {@code /scr}, which undo and redo the brush strokes of the player in
+ * {@link SculptorHistory}. The {@code //undo} of WorldEdit does not revert a brush stroke.
  *
  * <p>
- * Separate from WorldEdit's {@code //undo}, which walks the player's command history and will
- * not revert a brush stroke. Deliberately a command rather than a keybind: undo is destructive
- * and infrequent, and a key that far-reaching is too easy to hit by accident while sculpting.
- * </p>
- *
- * <p>
- * Named for how often it is typed. Undo is reached for constantly while sculpting, and
- * {@code //sc-undo} is four more keystrokes than the operation deserves -- the dash especially,
- * sitting where it does. The primary name is the short {@code /scu}, with {@code //scu} kept as an
- * alias so WorldEdit's double-slash habit still lands.
+ * Undo is a command and not a key, so a stray key press cannot undo a stroke. The aliases {@code //scu} and
+ * {@code //scr} accept the double slash of WorldEdit.
  * </p>
  */
 public class SculptorCommand extends CommandBase {
@@ -66,27 +45,19 @@ public class SculptorCommand extends CommandBase {
         return undo ? "scu" : "scr";
     }
 
-    /**
-     * The {@code /}-prefixed form is a separate map key, not a variant of the name, so
-     * {@code //scu} only works if it is registered as its own alias.
-     */
+    // the command map of vanilla matches the whole word, so `//scu` is a separate alias
     @Override
     public List<String> getCommandAliases() {
-        List<String> aliases = new ArrayList<String>();
-        aliases.add(undo ? "/scu" : "/scr");
-        return aliases;
+        return Collections.singletonList(undo ? "/scu" : "/scr");
     }
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return undo ? "/scu - undo your last Sculptor edit" : "/scr - redo the Sculptor edit you undid";
+        return undo ? "sculptor.command.undo.usage" : "sculptor.command.redo.usage";
     }
 
-    /**
-     * Vanilla's default requires op level 4. Authorisation is done in
-     * {@link #processCommand} through WorldEdit's permissions provider instead, so that a server
-     * running a permissions mod can grant Sculptor without granting op.
-     */
+    // the default of vanilla is op level 4. processCommand() checks the permission through the permission provider of
+    // WorldEdit, so a permissions mod can give Sculptor to a player who is not an op
     @Override
     public boolean canCommandSenderUseCommand(ICommandSender sender) {
         return true;
@@ -94,31 +65,17 @@ public class SculptorCommand extends CommandBase {
 
     @Override
     public void processCommand(ICommandSender sender, String[] args) {
-        if (!(sender instanceof EntityPlayerMP)) {
-            sender.addChatMessage(new ChatComponentText("Sculptor: only a player has an edit history"));
-            return;
-        }
+        if (!(sender instanceof EntityPlayerMP)) throw new CommandException("sculptor.command.not_player");
 
-        EntityPlayerMP player = (EntityPlayerMP) sender;
-        try {
-            ForgePlayer wrapped = ForgeWorldEdit.inst.wrap(player);
-            if (!wrapped.hasPermission(PERMISSION_BRUSH)) {
-                sender.addChatMessage(new ChatComponentText("Sculptor: you do not have permission to edit"));
-                return;
-            }
+        final EntityPlayerMP player = (EntityPlayerMP) sender;
+        final ForgePlayer wrapped = ForgeWorldEdit.inst.wrap(player);
+        if (!wrapped.hasPermission(PERMISSION_BRUSH)) throw new CommandException("sculptor.command.no_permission");
 
-            SculptorHistory history = SculptorHistory.forPlayer(player.getUniqueID());
-            boolean done = undo ? history.undo(wrapped) : history.redo(wrapped);
-
-            if (done) {
-                sender.addChatMessage(new ChatComponentText(undo ? "Sculptor: undone" : "Sculptor: redone"));
-            } else {
-                sender.addChatMessage(
-                    new ChatComponentText(undo ? "Sculptor: nothing to undo" : "Sculptor: nothing to redo"));
-            }
-        } catch (Exception e) {
-            sender.addChatMessage(new ChatComponentText("Sculptor: " + (undo ? "undo" : "redo") + " failed: " + e));
-            e.printStackTrace();
+        final SculptorHistory history = SculptorHistory.forPlayer(player.getUniqueID());
+        if (undo) {
+            SculptorChat.sendTranslated(sender, history.undo(wrapped) ? "sculptor.undo.done" : "sculptor.undo.empty");
+        } else {
+            SculptorChat.sendTranslated(sender, history.redo(wrapped) ? "sculptor.redo.done" : "sculptor.redo.empty");
         }
     }
 

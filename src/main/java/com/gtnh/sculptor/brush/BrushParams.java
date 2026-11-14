@@ -1,69 +1,95 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.brush;
 
+import java.util.Objects;
+
+import com.github.bsideup.jabel.Desugar;
 import com.sk89q.worldedit.blocks.BaseBlock;
+import com.sk89q.worldedit.blocks.BlockID;
 
 /**
- * Everything a brush needs to know about how it was configured.
+ * The settings of one brush stroke. The settings go to the server in the commit packet, so the preview and the commit
+ * run the brush with the same settings.
  *
- * <p>
- * Passed by value from the client to the server in the commit packet, so preview and commit run
- * the same brush with the same settings by construction rather than by two call sites agreeing.
- * </p>
+ * @param secondary           the second parameter of the brush, such as the height of a cylinder or the iterations of
+ *                            smooth
+ * @param strength            from 0 to 1, the force of a terrain brush
+ * @param autoSmooth          from 0 to 1, the strength of the smoothing pass after a placement brush. At 0 the pass
+ *                            does not run
+ * @param useSelectedMaterial build with {@code material}, not with the block that forms the surface
  */
-public final class BrushParams {
+@Desugar
+public record BrushParams(int radius, BaseBlock material, int secondary, double strength, double autoSmooth,
+    boolean useSelectedMaterial, OverhangMode overhang) {
 
-    public final int radius;
-    public final BaseBlock material;
-
-    /** Brush-specific second parameter: cylinder height, smooth iterations. */
-    public final int secondary;
-
-    /** 0..1, how forcefully a terrain brush acts. */
-    public final double strength;
-
-    /**
-     * 0..1, how much smoothing to apply after a placement brush. Zero disables it.
-     */
-    public final double autoSmooth;
-
-    /**
-     * When set, shape-preserving brushes build with {@link #material} rather than copying
-     * whatever block already forms the surface.
-     */
-    public final boolean useSelectedMaterial;
-
-    /** What becomes of the part of a placed shape with nothing under it. */
-    public final OverhangMode overhang;
-
-    public BrushParams(int radius, BaseBlock material, int secondary, double strength, double autoSmooth,
-        boolean useSelectedMaterial) {
-        this(radius, material, secondary, strength, autoSmooth, useSelectedMaterial, OverhangMode.SETTLE);
+    public BrushParams {
+        Objects.requireNonNull(material, "material");
+        Objects.requireNonNull(overhang, "overhang");
     }
 
-    public BrushParams(int radius, BaseBlock material, int secondary, double strength, double autoSmooth,
-        boolean useSelectedMaterial, OverhangMode overhang) {
-        this.radius = radius;
-        this.material = material;
-        this.secondary = secondary;
-        this.strength = strength;
-        this.autoSmooth = autoSmooth;
-        this.useSelectedMaterial = useSelectedMaterial;
-        this.overhang = (overhang != null) ? overhang : OverhangMode.SETTLE;
+    public static Builder builder() {
+        return new Builder();
     }
 
+    public Builder toBuilder() {
+        return new Builder().radius(radius)
+            .material(material)
+            .secondary(secondary)
+            .strength(strength)
+            .autoSmooth(autoSmooth)
+            .useSelectedMaterial(useSelectedMaterial)
+            .overhang(overhang);
+    }
+
+    /** A builder that starts from radius 1, stone, no auto-smooth and {@link OverhangMode#SETTLE}. */
+    public static final class Builder {
+
+        private int radius = 1;
+        private BaseBlock material = new BaseBlock(BlockID.STONE);
+        private int secondary = 1;
+        private double strength = 0.5D;
+        private double autoSmooth;
+        private boolean useSelectedMaterial;
+        private OverhangMode overhang = OverhangMode.SETTLE;
+
+        private Builder() {}
+
+        public Builder radius(int value) {
+            radius = value;
+            return this;
+        }
+
+        public Builder material(BaseBlock value) {
+            material = value;
+            return this;
+        }
+
+        public Builder secondary(int value) {
+            secondary = value;
+            return this;
+        }
+
+        public Builder strength(double value) {
+            strength = value;
+            return this;
+        }
+
+        public Builder autoSmooth(double value) {
+            autoSmooth = value;
+            return this;
+        }
+
+        public Builder useSelectedMaterial(boolean value) {
+            useSelectedMaterial = value;
+            return this;
+        }
+
+        public Builder overhang(OverhangMode value) {
+            overhang = value;
+            return this;
+        }
+
+        public BrushParams build() {
+            return new BrushParams(radius, material, secondary, strength, autoSmooth, useSelectedMaterial, overhang);
+        }
+    }
 }

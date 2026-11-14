@@ -1,18 +1,3 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.brush;
 
 import static org.junit.Assert.assertEquals;
@@ -29,101 +14,65 @@ import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.blocks.BlockID;
 
 /**
- * Brush behaviour against terrain lifted out of a real saved world.
- *
- * <p>
- * Both cases here were reported from play and neither could be reproduced on hand-built terrain.
- * That is the point of recording it: the shapes that break these brushes -- an undercut, a ledge
- * overhead, a face too rough to think of modelling -- are the ones nobody builds a test world out
- * of.
- * </p>
+ * The cylinder brush on {@link RecordedTerrain} from a saved world.
  */
 public class RealTerrainTest {
 
     private static final int RADIUS = 6;
     private static final int HEIGHT = 8;
 
-    private static SculptorEditContext stroke(String terrain, Vector at, OverhangMode mode, double autoSmooth)
-        throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(RecordedTerrain.named(terrain));
-        SculptorBrush.CYLINDER.apply(
-            ctx,
-            at,
-            new BrushParams(RADIUS, new BaseBlock(BlockID.STONE), HEIGHT, 1.0D, autoSmooth, false, mode));
-        return ctx;
-    }
-
-    private static int terrainBlocksDeleted(RecordedTerrain world, SculptorEditContext ctx) {
-        int deleted = 0;
-        for (Map.Entry<BlockVector, BaseBlock> change : ctx.getPendingChanges()
-            .entrySet()) {
-            if (change.getValue()
-                .getType() != BlockID.AIR) continue;
-
-            BlockVector at = change.getKey();
-            if (world.solid(at.getBlockX(), at.getBlockY(), at.getBlockZ())) deleted++;
-        }
-        return deleted;
-    }
-
     /**
-     * The cantilever keeps the shape you drew, so it has no business cutting the landscape around
-     * it to meet that shape.
-     *
-     * <p>
-     * On a rough cliff face the blending pass was trimming every bump within its reach by a block
-     * or two -- over a hundred blocks for one stroke, scattered, none of them near the shape, and
-     * with nothing placed below the cylinder to explain them.
-     * </p>
+     * The cantilever removes no block of the terrain. On a rough cliff face, a blend that cuts each bump within reach
+     * by a block or two would remove over a hundred blocks in one stroke, away from the shape.
      */
     @Test
-    public void theCantileverNeverDeletesTerrainThatWasAlreadyThere() throws Exception {
-        String[] places = { "noBottomSmoothing", "strayRemovals" };
-        int[][] centres = { { 907, 40, -623 }, { 904, 43, -623 } };
+    public void cantileverNeverDeletesTerrainThatWasAlreadyThere() throws Exception {
+        final String[] places = { "noBottomSmoothing", "strayRemovals" };
+        final int[][] centres = { { 907, 40, -623 }, { 904, 43, -623 } };
 
         for (int i = 0; i < places.length; i++) {
-            RecordedTerrain world = RecordedTerrain.named(places[i]);
-            Vector at = new Vector(centres[i][0], centres[i][1], centres[i][2]);
+            final RecordedTerrain world = RecordedTerrain.named(places[i]);
+            final Vector at = new Vector(centres[i][0], centres[i][1], centres[i][2]);
 
-            SculptorEditContext ctx = stroke(places[i], at, OverhangMode.CANTILEVER, 1.0D);
+            final SculptorEditContext ctx = runCylinder(world, at, createParams(HEIGHT, 1.0D, OverhangMode.CANTILEVER));
 
             assertTrue(
                 "nothing was placed at " + places[i] + ", so this proves nothing",
                 ctx.getPendingChanges()
                     .size() > 100);
-            assertEquals("cantilever deleted terrain at " + places[i], 0, terrainBlocksDeleted(world, ctx));
+            assertEquals("cantilever deleted terrain at " + places[i], 0, countTerrainBlocksDeleted(world, ctx));
         }
     }
 
     /**
-     * A cylinder cut into a real rock face gets an underside, where before it got none.
+     * A cylinder cut into a rock face gets a curved underside in at least 6 of the 13 columns on the X axis. A profile
+     * read from the world after the placement would be the run of the cliff, and most columns would get no underside.
      *
      * <p>
-     * The pass used to read the shape's extent off the world after placing it -- top of the
-     * column, walk down to the bottom of the solid run. Merged into a cliff, that run is the
-     * cliff's, so nearly every column was either dismissed as fused to the terrain or measured at
-     * the wrong thickness, and the droop came out as "0 4 0 0 0 0 0 0 0 0 0 0 0" across the whole
-     * disc. Taking the profile from the brush instead leaves nothing to misread.
-     * </p>
-     *
-     * <p>
-     * Twelve blocks tall on purpose. The rock at this spot stands eight to twelve blocks above the
-     * brush centre, so a shorter cylinder is buried in it and correctly has no underside to shape.
+     * The rock here stands 8 to 12 blocks above the brush centre, so the cylinder is 12 blocks tall. A shorter cylinder
+     * is inside the rock and has no underside.
      * </p>
      */
     @Test
-    public void aCylinderCutIntoARockFaceGetsAnUnderside() throws Exception {
-        Vector at = new Vector(907, 40, -623);
-        int tall = 12;
+    public void cylinderCutIntoARockFaceGetsAnUnderside() throws Exception {
+        final Vector at = new Vector(907, 40, -623);
+        final int tall = 12;
 
-        SculptorEditContext plain = strokeTall(at, 0.0D, tall);
-        SculptorEditContext shaped = strokeTall(at, 1.0D, tall);
+        final SculptorEditContext plain = runCylinder(
+            RecordedTerrain.named("noBottomSmoothing"),
+            at,
+            createParams(tall, 0.0D, OverhangMode.CANTILEVER));
+        final SculptorEditContext shaped = runCylinder(
+            RecordedTerrain.named("noBottomSmoothing"),
+            at,
+            createParams(tall, 1.0D, OverhangMode.CANTILEVER));
 
         int curved = 0;
         int deepest = 0;
         for (int dx = -RADIUS; dx <= RADIUS; dx++) {
-            int before = undersideAt(plain, at.getBlockX() + dx, at.getBlockY(), at.getBlockZ());
-            int after = undersideAt(shaped, at.getBlockX() + dx, at.getBlockY(), at.getBlockZ());
+            final Vector column = at.add(dx, 0, 0);
+            final int before = findUndersideY(plain, column);
+            final int after = findUndersideY(shaped, column);
             if (before == Integer.MIN_VALUE || after == Integer.MIN_VALUE) continue;
 
             if (before > after) curved++;
@@ -134,40 +83,61 @@ public class RealTerrainTest {
         assertTrue("the underside dropped " + deepest + " blocks under a " + tall + "-block shape", deepest <= tall);
     }
 
-    private static SculptorEditContext strokeTall(Vector at, double autoSmooth, int height) throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(RecordedTerrain.named("noBottomSmoothing"));
-        SculptorBrush.CYLINDER.apply(
-            ctx,
-            at,
-            new BrushParams(
-                RADIUS,
-                new BaseBlock(BlockID.STONE),
-                height,
-                1.0D,
-                autoSmooth,
-                false,
-                OverhangMode.CANTILEVER));
+    /**
+     * With {@link OverhangMode#SETTLE} the shape becomes part of the hill, so the pass may cut the ground around the
+     * shape.
+     */
+    @Test
+    public void settleIsStillAllowedToReshapeTheGround() throws Exception {
+        final RecordedTerrain world = RecordedTerrain.named("strayRemovals");
+        final Vector at = new Vector(904, 43, -623);
+
+        final SculptorEditContext ctx = runCylinder(world, at, createParams(HEIGHT, 1.0D, OverhangMode.SETTLE));
+        assertTrue(
+            "fill-to-ground should still be able to cut into terrain",
+            countTerrainBlocksDeleted(world, ctx) > 0);
+    }
+
+    private static SculptorEditContext runCylinder(RecordedTerrain world, Vector at, BrushParams params)
+        throws Exception {
+        final SculptorEditContext ctx = SculptorEditContext.preview(world);
+        SculptorBrush.CYLINDER.apply(ctx, at, params);
         return ctx;
     }
 
-    private static int undersideAt(SculptorEditContext ctx, int x, int cy, int z) {
-        int y = cy + 40;
+    private static BrushParams createParams(int height, double autoSmooth, OverhangMode mode) {
+        return BrushParams.builder()
+            .radius(RADIUS)
+            .material(new BaseBlock(BlockID.STONE))
+            .secondary(height)
+            .strength(1.0D)
+            .autoSmooth(autoSmooth)
+            .useSelectedMaterial(false)
+            .overhang(mode)
+            .build();
+    }
+
+    private static int countTerrainBlocksDeleted(RecordedTerrain world, SculptorEditContext ctx) {
+        int deleted = 0;
+        for (Map.Entry<BlockVector, BaseBlock> change : ctx.getPendingChanges()
+            .entrySet()) {
+            if (change.getValue()
+                .getType() != BlockID.AIR) continue;
+
+            final BlockVector at = change.getKey();
+            if (world.isSolid(at.getBlockX(), at.getBlockY(), at.getBlockZ())) deleted++;
+        }
+        return deleted;
+    }
+
+    // the bottom of the top solid run of the column, from 40 blocks above the centre
+    private static int findUndersideY(SculptorEditContext ctx, Vector centreColumn) {
+        final int x = centreColumn.getBlockX();
+        final int z = centreColumn.getBlockZ();
+        int y = centreColumn.getBlockY() + 40;
         while (y >= 0 && ctx.isAir(new Vector(x, y, z))) y--;
         if (y < 0) return Integer.MIN_VALUE;
         while (y > 0 && !ctx.isAir(new Vector(x, y - 1, z))) y--;
         return y;
-    }
-
-    /**
-     * Filling to ground is a different bargain: there the shape is meant to become part of the
-     * hill, so reshaping the ground around it is the point and it is allowed to cut.
-     */
-    @Test
-    public void fillingToGroundIsStillAllowedToReshapeTheGround() throws Exception {
-        RecordedTerrain world = RecordedTerrain.named("strayRemovals");
-        Vector at = new Vector(904, 43, -623);
-
-        SculptorEditContext ctx = stroke("strayRemovals", at, OverhangMode.SETTLE, 1.0D);
-        assertTrue("fill-to-ground should still be able to cut into terrain", terrainBlocksDeleted(world, ctx) > 0);
     }
 }

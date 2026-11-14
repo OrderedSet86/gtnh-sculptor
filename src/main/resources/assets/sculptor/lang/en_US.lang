@@ -10,3 +10,104 @@ key.sculptor.camera.keyframe.normal=Add keyframe (normal approach)
 key.sculptor.camera.keyframe.fast=Add keyframe (fast approach)
 key.sculptor.camera.play=Play or stop camera path
 key.sculptor.camera.clear=Clear camera path
+
+sculptor.brush.sphere=Sphere
+sculptor.brush.hollow_sphere=Hollow sphere
+sculptor.brush.cylinder=Cylinder
+sculptor.brush.hollow_cylinder=Hollow cylinder
+sculptor.brush.smooth=Smooth
+sculptor.brush.gravity=Gravity
+sculptor.brush.raise=Raise
+sculptor.brush.lower=Lower
+sculptor.brush.flatten=Flatten
+sculptor.brush.erode=Erode
+sculptor.brush.melt=Melt
+sculptor.brush.tree=Plant trees
+sculptor.brush.remove_foliage=Remove foliage
+sculptor.brush.secondary.height=Height: %s
+sculptor.brush.secondary.iterations=Iterations: %s
+
+sculptor.mask.overwrite=Overwrite anything
+sculptor.mask.air_only=Air only
+sculptor.mask.replace_material=Replace selected only
+
+sculptor.overhang.settle=Overhang: fill to ground
+sculptor.overhang.cantilever=Overhang: cantilever
+
+sculptor.brush.mode_on=Sculptor: sculpt mode ON
+sculptor.brush.mode_off=Sculptor: sculpt mode OFF
+sculptor.brush.preview_failed=Sculptor: preview failed: %s
+sculptor.brush.hud.target=Sculptor  %s  r=%s  %s blocks  %sm  [%s] commit  [%s] panel
+sculptor.brush.hud.no_target=Sculptor  %s  r=%s  no target  [%s] panel
+
+sculptor.commit.applied=Sculptor: %s applied %s blocks
+sculptor.commit.failed=Sculptor: commit failed: %s
+sculptor.commit.too_many_blocks=Sculptor: the stroke changes more blocks than the limit of %s
+
+sculptor.command.undo.usage=/scu, to undo your last Sculptor edit
+sculptor.command.redo.usage=/scr, to redo the Sculptor edit you undid
+sculptor.command.not_player=Sculptor: only a player has an edit history
+sculptor.command.no_permission=Sculptor: you do not have permission to edit
+sculptor.undo.done=Sculptor: undone
+sculptor.undo.empty=Sculptor: nothing to undo
+sculptor.redo.done=Sculptor: redone
+sculptor.redo.empty=Sculptor: nothing to redo
+
+sculptor.camera.speed.slow=Slow
+sculptor.camera.speed.normal=Normal
+sculptor.camera.speed.fast=Fast
+sculptor.camera.on=Sculptor: free camera ON  [%s/%s/%s] keyframe slow/normal/fast  [%s] play  [%s] clear
+sculptor.camera.off=Sculptor: free camera OFF
+sculptor.camera.inactive=Sculptor: turn on the free camera first
+sculptor.camera.cleared=Sculptor: camera path cleared
+sculptor.camera.keyframe_added=Sculptor: keyframe %s added (%s approach)
+sculptor.camera.too_few_keyframes=Sculptor: a path needs at least 2 keyframes
+sculptor.camera.playing=Sculptor: playing %s keyframes over %ss
+sculptor.camera.stopped=Sculptor: playback stopped
+sculptor.camera.finished=Sculptor: playback finished
+sculptor.camera.hud.playing=Camera  playing  %ss / %ss
+sculptor.camera.hud.free=Camera  free  %s b/s  %s keyframes  [%s/%s/%s] add  [%s] play  [%s] clear
+
+sculptor.path.usage=/scpath save|load|delete <name>, or /scpath list
+sculptor.path.no_camera=Sculptor: the camera is not available
+sculptor.path.list=Sculptor: saved paths: %s
+sculptor.path.list.empty=Sculptor: no saved paths
+sculptor.path.bad_name=Sculptor: '%s' is not a usable name. Use letters, digits, _ and - only
+sculptor.path.nothing_to_save=Sculptor: nothing to save. Add keyframes first
+sculptor.path.saved=Sculptor: saved %s keyframes as '%s'
+sculptor.path.loaded=Sculptor: loaded '%s', %s keyframes
+sculptor.path.deleted=Sculptor: deleted '%s'
+sculptor.path.missing=Sculptor: no saved path called '%s'
+sculptor.path.error.list=Sculptor: could not list %s: %s
+sculptor.path.error.save=Sculptor: could not save '%s': %s
+sculptor.path.error.load=Sculptor: could not load '%s': %s
+sculptor.path.error.delete=Sculptor: could not delete '%s': %s
+sculptor.path.error.newer=Sculptor: '%s' was saved by a newer version of Sculptor
+
+sculptor.panel.title=Sculptor
+sculptor.panel.brush=Brush
+sculptor.panel.previous=<
+sculptor.panel.next=>
+sculptor.panel.radius=Radius: %s
+sculptor.panel.secondary.unused=(no second parameter)
+sculptor.panel.strength=Strength: %s%%
+sculptor.panel.strength.unused=(strength unused)
+sculptor.panel.material=Material: %s
+sculptor.panel.material.unknown=unknown
+sculptor.panel.material.with_data=%s:%s
+sculptor.panel.use_held_block=Use held block
+sculptor.panel.material.selected=Material: selected block
+sculptor.panel.material.existing=Material: keep existing
+sculptor.panel.auto_smooth=Auto-smooth: %s%%
+sculptor.panel.auto_smooth.off=Auto-smooth: off
+sculptor.panel.camera=Camera (blocks/sec)
+sculptor.panel.fly_speed=Fly
+sculptor.panel.path_speeds=Keyframe approach speeds
+sculptor.panel.path_speeds.hint=The time of a segment is the segment length over the speed.
+sculptor.panel.path_file=Path file
+sculptor.panel.save=Save
+sculptor.panel.load=Load
+sculptor.panel.status.bad_name=Name: letters, digits, _ and - only
+sculptor.panel.status.nothing_to_save=Nothing to save. Add keyframes first
+sculptor.panel.status.saved=Saved %s keyframes
+sculptor.panel.status.loaded=Loaded %s keyframes

@@ -1,18 +1,3 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.camera;
 
 import static org.junit.Assert.assertEquals;
@@ -20,9 +5,13 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import java.io.File;
+import java.io.DataOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
@@ -34,74 +23,74 @@ import org.junit.rules.TemporaryFolder;
 
 import com.gtnh.sculptor.camera.CameraSettings.PathSpeed;
 
-/**
- * Saving and loading camera paths.
- */
+/** Save, load, list and delete camera paths in a real temporary directory. */
 public class CameraPathStoreTest {
 
     @Rule
     public TemporaryFolder folder = new TemporaryFolder();
 
-    private CameraPathStore store() {
-        return new CameraPathStore(new File(folder.getRoot(), "paths"));
-    }
-
-    private static List<CameraKeyframe> samplePath() {
-        return Arrays.asList(
-            new CameraKeyframe(1.5D, 70.25D, -3.75D, 90.0F, -12.5F, PathSpeed.SLOW),
-            new CameraKeyframe(40.0D, 88.0D, 12.0D, -170.0F, 5.0F, PathSpeed.FAST));
-    }
-
     @Test
-    public void savedPathComesBackUnchanged() throws Exception {
-        CameraPathStore store = store();
-        store.save("shot-1", samplePath());
+    public void savedPathLoadsUnchanged() throws Exception {
+        final CameraPathStore store = createStore();
+        store.save("shot-1", createSamplePath());
 
-        List<CameraKeyframe> loaded = store.load("shot-1");
-        List<CameraKeyframe> original = samplePath();
+        assertEquals(createSamplePath(), store.load("shot-1"));
+    }
 
-        assertEquals("keyframe count", original.size(), loaded.size());
-        for (int i = 0; i < original.size(); i++) {
-            CameraKeyframe a = original.get(i);
-            CameraKeyframe b = loaded.get(i);
-            assertEquals("x", a.x, b.x, 0.0D);
-            assertEquals("y", a.y, b.y, 0.0D);
-            assertEquals("z", a.z, b.z, 0.0D);
-            assertEquals("yaw", a.yaw, b.yaw, 0.0F);
-            assertEquals("pitch", a.pitch, b.pitch, 0.0F);
-            assertEquals("speed", a.speed, b.speed);
+    /** 50 generated paths of 0 to 20 keyframes, with a constant seed, so a failing path is the same on the next run. */
+    @Test
+    public void generatedPathsLoadUnchanged() throws Exception {
+        final Random random = new Random(20261114L);
+        final CameraPathStore store = createStore();
+        final PathSpeed[] tiers = PathSpeed.values();
+
+        for (int run = 0; run < 50; run++) {
+            final List<CameraKeyframe> path = new ArrayList<>();
+            final int size = random.nextInt(21);
+            for (int i = 0; i < size; i++) {
+                path.add(
+                    new CameraKeyframe(
+                        new CameraPose(
+                            (random.nextDouble() - 0.5D) * 6.0e7D,
+                            random.nextDouble() * 256.0D,
+                            (random.nextDouble() - 0.5D) * 6.0e7D,
+                            (random.nextFloat() - 0.5F) * 720.0F,
+                            (random.nextFloat() - 0.5F) * 180.0F),
+                        tiers[random.nextInt(tiers.length)]));
+            }
+            store.save("run-" + run, path);
+            assertEquals("path " + run, path, store.load("run-" + run));
         }
     }
 
     @Test
-    public void savingCreatesTheDirectoryAndListsTheName() throws Exception {
-        CameraPathStore store = store();
+    public void saveCreatesTheDirectoryAndListsTheName() throws Exception {
+        final CameraPathStore store = createStore();
         assertTrue(
             "nothing saved yet",
-            store.list()
+            store.listNames()
                 .isEmpty());
 
-        store.save("shot-1", samplePath());
-        store.save("another", samplePath());
+        store.save("shot-1", createSamplePath());
+        store.save("another", createSamplePath());
 
-        assertEquals(Arrays.asList("another", "shot-1"), store.list());
+        assertEquals(Arrays.asList("another", "shot-1"), store.listNames());
         assertTrue(store.exists("shot-1"));
 
         assertTrue(store.delete("shot-1"));
         assertFalse(store.exists("shot-1"));
-        assertEquals(Arrays.asList("another"), store.list());
+        assertFalse("a second delete finds nothing", store.delete("shot-1"));
+        assertEquals(Arrays.asList("another"), store.listNames());
     }
 
-    /**
-     * Speeds are written by name so a path keeps its pacing if the enum is ever reordered. A tier
-     * that no longer exists costs one segment's pace, not the whole shot.
-     */
     @Test
-    public void anUnknownSpeedTierLoadsAsNormal() throws Exception {
-        File directory = new File(folder.getRoot(), "paths");
-        assertTrue(directory.mkdirs());
+    public void unknownSpeedTierLoadsAsNormal() throws Exception {
+        final Path directory = folder.getRoot()
+            .toPath()
+            .resolve("paths");
+        Files.createDirectories(directory);
 
-        NBTTagCompound frame = new NBTTagCompound();
+        final NBTTagCompound frame = new NBTTagCompound();
         frame.setDouble("x", 0.0D);
         frame.setDouble("y", 64.0D);
         frame.setDouble("z", 0.0D);
@@ -109,51 +98,72 @@ public class CameraPathStoreTest {
         frame.setFloat("pitch", 0.0F);
         frame.setString("speed", "GLACIAL");
 
-        NBTTagList frames = new NBTTagList();
+        final NBTTagList frames = new NBTTagList();
         frames.appendTag(frame);
 
-        NBTTagCompound root = new NBTTagCompound();
+        final NBTTagCompound root = new NBTTagCompound();
         root.setInteger("version", CameraPathStore.FORMAT_VERSION);
         root.setTag("keyframes", frames);
-        CompressedStreamTools.write(root, new File(directory, "odd.dat"));
+        try (DataOutputStream out = new DataOutputStream(Files.newOutputStream(directory.resolve("odd.dat")))) {
+            CompressedStreamTools.write(root, out);
+        }
 
-        List<CameraKeyframe> loaded = store().load("odd");
+        final List<CameraKeyframe> loaded = createStore().load("odd");
         assertEquals(1, loaded.size());
-        assertEquals(PathSpeed.NORMAL, loaded.get(0).speed);
+        assertEquals(
+            PathSpeed.NORMAL,
+            loaded.get(0)
+                .speed());
     }
 
-    /**
-     * A name becomes a file name, so anything that could climb out of the directory has to be
-     * refused outright rather than stripped -- stripping would quietly map two names onto one file.
-     */
     @Test
-    public void namesThatCouldEscapeTheDirectoryAreRefused() {
+    public void nameThatCouldLeaveTheDirectoryIsRejected() throws Exception {
         assertFalse(CameraPathStore.isValidName("../evil"));
         assertFalse(CameraPathStore.isValidName("sub/dir"));
         assertFalse(CameraPathStore.isValidName("with space"));
         assertFalse(CameraPathStore.isValidName(""));
         assertFalse(CameraPathStore.isValidName(null));
+        assertFalse(CameraPathStore.isValidName(repeat('a', 65)));
+        assertTrue(CameraPathStore.isValidName(repeat('a', 64)));
         assertTrue(CameraPathStore.isValidName("shot-1_take2"));
 
         try {
-            store().save("../evil", samplePath());
-            fail("a name that escapes the directory must not be saved");
+            createStore().save("../evil", createSamplePath());
+            fail("a name that leaves the directory must not be saved");
         } catch (IllegalArgumentException expected) {
-            // exactly right
-        } catch (Exception e) {
-            fail("expected the name to be rejected, got " + e);
+            assertTrue(
+                expected.getMessage()
+                    .contains("../evil"));
         }
     }
 
     @Test
-    public void loadingSomethingThatWasNeverSavedFails() {
+    public void loadOfAPathNeverSavedFailsWithTheName() {
         try {
-            store().load("missing");
-            fail("loading a path that does not exist should fail");
-        } catch (Exception expected) {
-            assertTrue(
-                expected.getMessage()
-                    .contains("missing"));
+            createStore().load("missing");
+            fail("a load of a path that does not exist must fail");
+        } catch (CameraPathException expected) {
+            assertEquals("sculptor.path.missing", expected.getLangKey());
+            assertEquals(Arrays.asList("missing"), Arrays.asList(expected.getFormatValues()));
         }
+    }
+
+    private CameraPathStore createStore() {
+        return new CameraPathStore(
+            folder.getRoot()
+                .toPath()
+                .resolve("paths"));
+    }
+
+    private static List<CameraKeyframe> createSamplePath() {
+        return Arrays.asList(
+            new CameraKeyframe(new CameraPose(1.5D, 70.25D, -3.75D, 90.0F, -12.5F), PathSpeed.SLOW),
+            new CameraKeyframe(new CameraPose(40.0D, 88.0D, 12.0D, -170.0F, 5.0F), PathSpeed.FAST));
+    }
+
+    private static String repeat(char c, int count) {
+        final char[] chars = new char[count];
+        Arrays.fill(chars, c);
+        return new String(chars);
     }
 }

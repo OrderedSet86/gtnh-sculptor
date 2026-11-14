@@ -1,18 +1,3 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.render;
 
 import java.util.Map;
@@ -41,67 +26,44 @@ import com.sk89q.worldedit.blocks.BlockID;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 
 /**
- * Draws a set of pending block changes as a translucent ghost in the world.
+ * The preview of a brush stroke in the world: a translucent ghost of the placed blocks, and red boxes over the removed
+ * blocks.
  *
  * <p>
- * Two meshes are built, because an edit has two halves and only showing one of them is
- * misleading. Blocks being <em>placed</em> are drawn with their real models and textures, via
- * vanilla {@link RenderBlocks} run against a {@link PreviewWorld} so faces are culled against
- * existing terrain. Blocks being <em>removed</em> have no model to draw -- their pending state
- * is air -- so they are drawn as red boxes over the blocks that are about to disappear.
- * Without that, a brush that only removes (lower, erode) would preview as nothing at all.
+ * A placed block is drawn with the model of the block, by vanilla {@link RenderBlocks} on a {@link PreviewWorld}, so
+ * faces against the terrain are culled. A removed block is air in the preview and has no model, so the block gets a red
+ * box. Without the boxes, a brush that only removes, such as lower or erode, shows nothing.
  * </p>
  *
  * <p>
- * Geometry is captured into a VBO rather than drawn immediately, so a stroke is baked once and
- * redrawn every frame for free.
- * </p>
- *
- * <p>
- * We deliberately do not touch the terrain renderer. Angelica {@code @Overwrite}s
- * {@code RenderGlobal.sortAndRender} and friends at priority 900; drawing from
- * {@link RenderWorldLastEvent} stays entirely out of its way, and means previewing costs zero
- * chunk rebuilds -- nothing is written to the world until the user commits.
+ * {@link #onRenderWorldLast} bakes each preview once into a VBO, and renders the VBO each frame. The class does not
+ * change the terrain renderer, which Angelica replaces with {@code @Overwrite} at priority 900. A preview causes no
+ * chunk rebuild.
  * </p>
  */
 public class GhostRenderer {
 
     private static final GhostRenderer INSTANCE = new GhostRenderer();
 
-    /** How solid the ghost appears. */
     private static final float ALPHA = 0.55f;
 
-    /**
-     * How far a removal box is grown past its block.
-     *
-     * <p>
-     * It used to be inset instead, which put its faces just <em>behind</em> the terrain it marks
-     * and left the polygon offset to pull them forward. How much depth a polygon offset unit buys
-     * depends on distance, so near the camera it was not enough to clear the inset and far away it
-     * was far more than enough -- and somewhere in between the two surfaces traded places pixel by
-     * pixel, which is the speckling along a removal edge. Growing the box instead puts it in front
-     * by a fixed distance in world space, which no amount of depth precision can reverse.
-     * </p>
-     */
+    // a polygon offset unit is a different world distance at each depth. A box inset behind the terrain and pulled
+    // forward by the offset would trade places with the terrain pixel by pixel at some distances. A box larger than the
+    // block is in front by a fixed world distance
     private static final double REMOVAL_OUTSET = 0.01D;
 
     private Map<BlockVector, BaseBlock> pending;
 
-    /** Blocks being placed, with their real models. */
     private IVertexArrayObject additionMesh;
-    /** Blocks being removed, as plain coloured boxes. */
     private IVertexArrayObject removalMesh;
-
     private boolean needsRebuild;
+    private boolean sawRemovals;
 
-    /**
-     * Integer world position the meshes were baked relative to. Baking around a nearby origin
-     * keeps vertex coordinates small, which matters because they are floats and world
-     * coordinates can be in the millions.
-     */
+    // the meshes are baked relative to this block. A vertex coordinate is a float, and a world coordinate can be in the
+    // millions
     private int originX, originY, originZ;
 
-    /** Draw the ghost through terrain (x-ray) rather than letting it be occluded. */
+    // with false, the ghost shows through the terrain
     private boolean depthTest = true;
 
     private GhostRenderer() {}
@@ -110,11 +72,7 @@ public class GhostRenderer {
         return INSTANCE;
     }
 
-    /**
-     * Show the given pending changes. The map is used directly rather than copied, so callers
-     * should not mutate it afterwards; {@code EditSession.getPendingChanges()} already returns
-     * an unmodifiable view.
-     */
+    /** Show the changes. The renderer uses the map and not a copy, so do not change the map after the call. */
     public void setPreview(Map<BlockVector, BaseBlock> changes) {
         this.pending = changes;
         this.needsRebuild = true;
@@ -129,10 +87,6 @@ public class GhostRenderer {
 
     public void setDepthTest(boolean depthTest) {
         this.depthTest = depthTest;
-    }
-
-    public boolean hasPreview() {
-        return pending != null && !pending.isEmpty();
     }
 
     private void deleteMeshes() {
@@ -167,15 +121,13 @@ public class GhostRenderer {
         }
     }
 
+    public boolean hasPreview() {
+        return pending != null && !pending.isEmpty();
+    }
+
     /**
-     * Bake the pending changes into VBOs.
-     *
-     * <p>
-     * This runs on the render thread. Moving it to a worker is the obvious optimisation, but
-     * arbitrary mod {@code ISBRH} implementations are not thread-safe, so that step needs
-     * {@code AngelicaBlockSafetyRegistry} gating and is deferred until this path is known
-     * correct.
-     * </p>
+     * Bake the changes into VBOs, on the render thread. The {@code ISBRH} of a mod is not thread-safe, so a bake on a
+     * worker thread must use the {@code AngelicaBlockSafetyRegistry} of Angelica.
      */
     private void rebuild(Minecraft mc) {
         deleteMeshes();
@@ -191,17 +143,19 @@ public class GhostRenderer {
         removalMesh = sawRemovals ? bakeRemovals(mc) : null;
     }
 
-    /** Set while baking additions, so the removal pass runs only when there is one to draw. */
-    private boolean sawRemovals;
-
+    /**
+     * Bake the placed blocks with the block models into a VBO, and set {@code sawRemovals} when a change is air. A
+     * block with an opaque change on each side is skipped. Return {@code null} when no quad was drawn.
+     */
     private IVertexArrayObject bakeAdditions(PreviewWorld world) {
         RenderBlocks renderBlocks = new RenderBlocks(world);
-        // Ambient occlusion reads neighbour light through the fake world and mostly just adds
-        // noise to a translucent overlay.
+        // ambient occlusion reads the light of the neighbours through the preview world, and adds noise to a
+        // translucent ghost
         renderBlocks.enableAO = false;
 
-        DirectTessellator tes = TessellatorManager.startCapturingDirect();
+        final DirectTessellator tes = TessellatorManager.startCapturingDirect();
         int quads = 0;
+        boolean baked = false;
         try {
             tes.startDrawingQuads();
             tes.setTranslation(-originX, -originY, -originZ);
@@ -209,8 +163,6 @@ public class GhostRenderer {
             for (Map.Entry<BlockVector, BaseBlock> entry : pending.entrySet()) {
                 if (entry.getValue()
                     .getType() == BlockID.AIR) {
-                    // Noted here so the removal pass can be skipped outright for a brush that
-                    // only places, rather than walking the whole change set to find nothing.
                     sawRemovals = true;
                     continue;
                 }
@@ -230,28 +182,20 @@ public class GhostRenderer {
             }
 
             tes.setTranslation(0, 0, 0);
-        } catch (RuntimeException e) {
-            // Never leave the capture stack unbalanced -- it is thread-local state shared with
-            // every other mod that tessellates.
-            TessellatorManager.stopCapturingDirect();
-            throw e;
+            baked = true;
+        } finally {
+            // the capture stack is thread-local state of every mod that tessellates. Pop the capture on a throw
+            if (!baked) TessellatorManager.stopCapturingDirect();
         }
 
         return finishCapture(quads);
     }
 
-    /**
-     * Draw a box over every block the edit will delete.
-     *
-     * <p>
-     * A removal's pending state is air, which has no model, so these would otherwise be
-     * invisible. Only positions that currently hold something are marked -- carving air out of
-     * air is not a change worth showing.
-     * </p>
-     */
+    /** Bake a red box over each block that the stroke removes. A position with air in the world gets no box. */
     private IVertexArrayObject bakeRemovals(Minecraft mc) {
-        DirectTessellator tes = TessellatorManager.startCapturingDirect();
+        final DirectTessellator tes = TessellatorManager.startCapturingDirect();
         int boxes = 0;
+        boolean baked = false;
         try {
             tes.startDrawingQuads();
             tes.setTranslation(-originX, -originY, -originZ);
@@ -266,27 +210,22 @@ public class GhostRenderer {
                 Block existing = mc.theWorld.getBlock(pos.getBlockX(), pos.getBlockY(), pos.getBlockZ());
                 if (existing == null || existing.getMaterial() == Material.air) continue;
 
-                addBox(tes, pos.getBlockX(), pos.getBlockY(), pos.getBlockZ());
+                addBox(tes, pos);
                 boxes++;
             }
 
             tes.setTranslation(0, 0, 0);
-        } catch (RuntimeException e) {
-            TessellatorManager.stopCapturingDirect();
-            throw e;
+            baked = true;
+        } finally {
+            if (!baked) TessellatorManager.stopCapturingDirect();
         }
 
         return finishCapture(boxes);
     }
 
     /**
-     * Close a capture, returning a mesh only if anything was actually drawn.
-     *
-     * <p>
-     * An empty capture yields a vertex buffer with no format attached, which throws deep inside
-     * the VAO code the moment it is bound. Brushes that remove rather than place produce
-     * exactly that for the addition pass, so this is a normal case, not an error.
-     * </p>
+     * Close a capture, and return {@code null} when nothing was drawn. A VBO from an empty capture has no vertex
+     * format, and throws in the VAO code when bound. The addition pass of a brush that only removes is empty.
      */
     private static IVertexArrayObject finishCapture(int drawn) {
         if (drawn == 0) {
@@ -296,18 +235,18 @@ public class GhostRenderer {
         return DirectTessellator.stopCapturingToVBO(VertexBufferType.IMMUTABLE);
     }
 
-    /** Six faces of a slightly inset cube, in red. */
-    private static void addBox(Tessellator tes, int bx, int by, int bz) {
-        double x0 = bx - REMOVAL_OUTSET;
-        double y0 = by - REMOVAL_OUTSET;
-        double z0 = bz - REMOVAL_OUTSET;
-        double x1 = bx + 1 + REMOVAL_OUTSET;
-        double y1 = by + 1 + REMOVAL_OUTSET;
-        double z1 = bz + 1 + REMOVAL_OUTSET;
+    /** Add the six faces of a red box, {@link #REMOVAL_OUTSET} larger than the block on each side. */
+    private static void addBox(Tessellator tes, BlockVector block) {
+        final double x0 = block.getBlockX() - REMOVAL_OUTSET;
+        final double y0 = block.getBlockY() - REMOVAL_OUTSET;
+        final double z0 = block.getBlockZ() - REMOVAL_OUTSET;
+        final double x1 = block.getBlockX() + 1 + REMOVAL_OUTSET;
+        final double y1 = block.getBlockY() + 1 + REMOVAL_OUTSET;
+        final double z1 = block.getBlockZ() + 1 + REMOVAL_OUTSET;
 
         tes.setColorRGBA_F(1.0f, 0.25f, 0.25f, 1.0f);
 
-        // bottom / top
+        // bottom and top
         tes.addVertex(x0, y0, z0);
         tes.addVertex(x1, y0, z0);
         tes.addVertex(x1, y0, z1);
@@ -318,7 +257,7 @@ public class GhostRenderer {
         tes.addVertex(x1, y1, z0);
         tes.addVertex(x0, y1, z0);
 
-        // north / south
+        // north and south
         tes.addVertex(x0, y0, z0);
         tes.addVertex(x0, y1, z0);
         tes.addVertex(x1, y1, z0);
@@ -329,7 +268,7 @@ public class GhostRenderer {
         tes.addVertex(x0, y1, z1);
         tes.addVertex(x0, y0, z1);
 
-        // west / east
+        // west and east
         tes.addVertex(x0, y0, z1);
         tes.addVertex(x0, y1, z1);
         tes.addVertex(x0, y1, z0);
@@ -341,6 +280,10 @@ public class GhostRenderer {
         tes.addVertex(x1, y0, z1);
     }
 
+    /**
+     * Render the meshes translucent, with no depth write, offset toward the camera, and with no depth test when
+     * {@code depthTest} is false. The GL state is restored after the draw.
+     */
     private void draw(Minecraft mc, float partialTicks) {
         Entity view = mc.renderViewEntity;
         double viewX = view.lastTickPosX + (view.posX - view.lastTickPosX) * partialTicks;
@@ -350,28 +293,22 @@ public class GhostRenderer {
         GL11.glPushMatrix();
         GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
         try {
-            // The meshes are in bake-origin space; shift by how far the camera has moved since.
+            // the meshes are relative to the bake origin. Move the meshes by the camera motion since the bake
             GL11.glTranslated(originX - viewX, originY - viewY, originZ - viewZ);
 
-            // RenderBlocks emits opaque vertex colours (setColorOpaque_F), so ordinary
-            // SRC_ALPHA blending would draw the ghost solid. Constant-alpha blending applies a
-            // uniform transparency independent of what the block models baked in, which avoids
-            // needing a shader purely to scale alpha.
+            // RenderBlocks writes opaque vertex colours with setColorOpaque_F(), so with SRC_ALPHA blending the ghost
+            // is solid. Blend with a constant alpha
             GL11.glEnable(GL11.GL_BLEND);
             GL14.glBlendColor(1f, 1f, 1f, ALPHA);
             GL11.glBlendFunc(GL11.GL_CONSTANT_ALPHA, GL11.GL_ONE_MINUS_CONSTANT_ALPHA);
 
-            // Translucent geometry has no back-face occlusion to rely on, and the quads are not
-            // depth-sorted, so keep both sides and do not write depth.
+            // the quads are translucent and not sorted by depth. Draw both sides and write no depth
             GL11.glDisable(GL11.GL_CULL_FACE);
             GL11.glDisable(GL11.GL_ALPHA_TEST);
             GL11.glDepthMask(false);
 
-            // A ghost block sits exactly on the face of the real block it covers, and two
-            // coplanar surfaces at equal depth shimmer as the rasteriser picks between them per
-            // pixel. Bias the ghost toward the viewer in depth only -- unlike inflating the mesh,
-            // this fixes the fighting without distorting the geometry or leaving seams where two
-            // inflated blocks meet.
+            // a ghost face is on the face of the real block, and two faces at one depth flicker. Move the ghost toward
+            // the camera in depth only. A larger mesh would leave seams where two ghost blocks meet
             GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
             GL11.glPolygonOffset(-1.0f, -1.0f);
 
@@ -388,7 +325,7 @@ public class GhostRenderer {
             }
 
             if (removalMesh != null) {
-                // Removal boxes carry their own colour and no texture coordinates.
+                // a removal box has a vertex colour and no texture coordinates
                 GL11.glDisable(GL11.GL_TEXTURE_2D);
                 removalMesh.render();
             }

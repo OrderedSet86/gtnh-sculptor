@@ -1,18 +1,3 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.preview;
 
 import static org.junit.Assert.assertEquals;
@@ -33,19 +18,88 @@ import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.blocks.BlockID;
 
 /**
- * Where a pending change is found, and where it is not.
+ * The positions where {@link PreviewWorld} reads a change, and the positions where {@link PreviewWorld} reads the
+ * world.
  *
  * <p>
- * Metadata is the thing under test throughout, because it is the one query that resolves without
- * the block registry -- which is not bootstrapped headlessly. A pending position reports its own
- * data value and everything else falls through to the world, so the two are easy to tell apart.
+ * The tests read metadata: the one query with no use of the block registry. A headless test has no block registry. A
+ * changed position reads the data value of the change, and the world reads {@code DELEGATE_META}.
  * </p>
  */
 public class PreviewWorldTest {
 
-    /** Anything reading through to the world gets this, so a fall-through is unmistakable. */
     private static final int DELEGATE_META = 9;
 
+    /**
+     * The changes go into an array over their bounding box, which here spans negative coordinates. An off-by-one in the
+     * index reads the block of a neighbour.
+     *
+     * <p>
+     * The bounding box is 8 by 5 by 13. With equal sizes, a swap of the x and z strides passes the test.
+     * </p>
+     */
+    @Test
+    public void findsPendingBlocksAcrossTheOriginAndFallsThroughEverywhereElse() {
+        final Map<BlockVector, BaseBlock> pending = createChanges(
+            new int[][] { { -5, 60, -3, 1 }, { 2, 64, 9, 2 }, { -5, 64, 9, 3 }, { 2, 60, -3, 4 } });
+        final PreviewWorld world = new PreviewWorld(new StubWorld(), pending);
+
+        assertEquals(1, world.getBlockMetadata(-5, 60, -3));
+        assertEquals(2, world.getBlockMetadata(2, 64, 9));
+        assertEquals(3, world.getBlockMetadata(-5, 64, 9));
+        assertEquals(4, world.getBlockMetadata(2, 60, -3));
+
+        // inside the bounding box, with no change
+        assertEquals(DELEGATE_META, world.getBlockMetadata(0, 62, 0));
+        assertEquals(DELEGATE_META, world.getBlockMetadata(-5, 60, 9));
+        assertEquals(DELEGATE_META, world.getBlockMetadata(2, 64, -3));
+
+        // one block outside the bounding box, on each face
+        assertEquals(DELEGATE_META, world.getBlockMetadata(-6, 60, -3));
+        assertEquals(DELEGATE_META, world.getBlockMetadata(3, 64, 9));
+        assertEquals(DELEGATE_META, world.getBlockMetadata(-5, 59, -3));
+        assertEquals(DELEGATE_META, world.getBlockMetadata(-5, 65, -3));
+        assertEquals(DELEGATE_META, world.getBlockMetadata(-5, 60, -4));
+        assertEquals(DELEGATE_META, world.getBlockMetadata(2, 64, 10));
+
+        // far outside the bounding box
+        assertEquals(DELEGATE_META, world.getBlockMetadata(400, 70, -400));
+    }
+
+    /**
+     * Two changes far apart have a bounding box of billions of cells, so {@link PreviewWorld} reads the map and builds
+     * no array. The reads are the same as through the array.
+     */
+    @Test
+    public void changesTooSpreadOutForTheArrayStillResolve() {
+        final Map<BlockVector, BaseBlock> pending = createChanges(
+            new int[][] { { 0, 64, 0, 5 }, { 30000, 200, -30000, 6 } });
+        final PreviewWorld world = new PreviewWorld(new StubWorld(), pending);
+
+        assertEquals(5, world.getBlockMetadata(0, 64, 0));
+        assertEquals(6, world.getBlockMetadata(30000, 200, -30000));
+        assertEquals(DELEGATE_META, world.getBlockMetadata(1, 64, 0));
+        assertEquals(DELEGATE_META, world.getBlockMetadata(15000, 100, -15000));
+    }
+
+    @Test
+    public void emptyChangesReadTheWorldEverywhere() {
+        final PreviewWorld world = new PreviewWorld(new StubWorld(), new LinkedHashMap<>());
+
+        assertEquals(DELEGATE_META, world.getBlockMetadata(0, 0, 0));
+        assertEquals(DELEGATE_META, world.getBlockMetadata(-12, 200, 77));
+    }
+
+    // each row is x, y, z and the data value of a stone block
+    private static Map<BlockVector, BaseBlock> createChanges(int[][] positionsAndMeta) {
+        final Map<BlockVector, BaseBlock> pending = new LinkedHashMap<>();
+        for (int[] entry : positionsAndMeta) {
+            pending.put(new BlockVector(entry[0], entry[1], entry[2]), new BaseBlock(BlockID.STONE, entry[3]));
+        }
+        return pending;
+    }
+
+    /** A world with no blocks, whose metadata is {@link #DELEGATE_META} everywhere. */
     private static class StubWorld implements IBlockAccess {
 
         @Override
@@ -97,74 +151,5 @@ public class PreviewWorldTest {
         public boolean isSideSolid(int x, int y, int z, ForgeDirection side, boolean defaultValue) {
             return defaultValue;
         }
-    }
-
-    private static Map<BlockVector, BaseBlock> changes(int[][] positionsAndMeta) {
-        Map<BlockVector, BaseBlock> pending = new LinkedHashMap<BlockVector, BaseBlock>();
-        for (int[] entry : positionsAndMeta) {
-            pending.put(new BlockVector(entry[0], entry[1], entry[2]), new BaseBlock(BlockID.STONE, entry[3]));
-        }
-        return pending;
-    }
-
-    /**
-     * The change set is unpacked into an array over its bounding box, so the index arithmetic has
-     * to survive negative coordinates -- which is where an off-by-one reads a neighbour's block
-     * and draws the ghost wrong.
-     *
-     * <p>
-     * The bounding box is deliberately 8 x 5 x 13. Equal dimensions would let the x and z strides
-     * be swapped without any test noticing, which is exactly the mistake worth catching.
-     * </p>
-     */
-    @Test
-    public void findsPendingBlocksAcrossTheOriginAndFallsThroughEverywhereElse() {
-        Map<BlockVector, BaseBlock> pending = changes(
-            new int[][] { { -5, 60, -3, 1 }, { 2, 64, 9, 2 }, { -5, 64, 9, 3 }, { 2, 60, -3, 4 } });
-        PreviewWorld world = new PreviewWorld(new StubWorld(), pending);
-
-        assertEquals(1, world.getBlockMetadata(-5, 60, -3));
-        assertEquals(2, world.getBlockMetadata(2, 64, 9));
-        assertEquals(3, world.getBlockMetadata(-5, 64, 9));
-        assertEquals(4, world.getBlockMetadata(2, 60, -3));
-
-        // Inside the bounding box, but untouched.
-        assertEquals(DELEGATE_META, world.getBlockMetadata(0, 62, 0));
-        assertEquals(DELEGATE_META, world.getBlockMetadata(-5, 60, 9));
-        assertEquals(DELEGATE_META, world.getBlockMetadata(2, 64, -3));
-
-        // Just outside it, on every face.
-        assertEquals(DELEGATE_META, world.getBlockMetadata(-6, 60, -3));
-        assertEquals(DELEGATE_META, world.getBlockMetadata(3, 64, 9));
-        assertEquals(DELEGATE_META, world.getBlockMetadata(-5, 59, -3));
-        assertEquals(DELEGATE_META, world.getBlockMetadata(-5, 65, -3));
-        assertEquals(DELEGATE_META, world.getBlockMetadata(-5, 60, -4));
-        assertEquals(DELEGATE_META, world.getBlockMetadata(2, 64, 10));
-
-        // Nowhere near.
-        assertEquals(DELEGATE_META, world.getBlockMetadata(400, 70, -400));
-    }
-
-    /**
-     * Two changes far apart would give the array a bounding box of billions of cells, so it is
-     * not built and the map answers instead. The answers must not depend on which path ran.
-     */
-    @Test
-    public void aChangeSetTooSpreadOutToUnpackStillResolves() {
-        Map<BlockVector, BaseBlock> pending = changes(new int[][] { { 0, 64, 0, 5 }, { 30000, 200, -30000, 6 } });
-        PreviewWorld world = new PreviewWorld(new StubWorld(), pending);
-
-        assertEquals(5, world.getBlockMetadata(0, 64, 0));
-        assertEquals(6, world.getBlockMetadata(30000, 200, -30000));
-        assertEquals(DELEGATE_META, world.getBlockMetadata(1, 64, 0));
-        assertEquals(DELEGATE_META, world.getBlockMetadata(15000, 100, -15000));
-    }
-
-    @Test
-    public void anEmptyChangeSetReadsEntirelyThroughToTheWorld() {
-        PreviewWorld world = new PreviewWorld(new StubWorld(), new LinkedHashMap<BlockVector, BaseBlock>());
-
-        assertEquals(DELEGATE_META, world.getBlockMetadata(0, 0, 0));
-        assertEquals(DELEGATE_META, world.getBlockMetadata(-12, 200, 77));
     }
 }

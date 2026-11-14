@@ -69,5 +69,4 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     // Lets the commit path be tested against a stand-in EditSession, so preview-vs-commit
     // equivalence can be checked without booting a WorldEdit platform.
-    testImplementation 'org.mockito:mockito-core:5.4.0'
 }

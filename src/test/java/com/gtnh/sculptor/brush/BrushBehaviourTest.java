@@ -1,18 +1,3 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.brush;
 
 import static org.junit.Assert.assertEquals;
@@ -30,146 +15,24 @@ import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.blocks.BlockID;
 import com.sk89q.worldedit.world.NullWorld;
 
-/**
- * Behaviour of individual brushes, as distinct from preview-vs-commit equivalence.
- */
+/** The result of single brushes on small test worlds. {@code PreviewMatchesCommitTest} compares preview and commit. */
 public class BrushBehaviourTest {
 
     private static final int SURFACE_Y = 63;
-
-    /** Grass over dirt over stone, so layering is observable. */
-    private static class LayeredWorld extends NullWorld {
-
-        @Override
-        public BaseBlock getBlock(Vector position) {
-            int y = position.getBlockY();
-            if (y > SURFACE_Y) return new BaseBlock(BlockID.AIR);
-            if (y == SURFACE_Y) return new BaseBlock(BlockID.GRASS);
-            if (y >= SURFACE_Y - 3) return new BaseBlock(BlockID.DIRT);
-            return new BaseBlock(BlockID.STONE);
-        }
-
-        @Override
-        public BaseBlock getLazyBlock(Vector position) {
-            return getBlock(position);
-        }
-    }
-
-    /**
-     * A cliff far taller than any brush radius: ground at {@code y=63} west of {@code x=0} and at
-     * {@code y=93} from there east.
-     *
-     * <p>
-     * Thirty blocks of relief is the point. Surface finding used to search a window of
-     * {@code centreY +/- (radius + 1)}, so on terrain like this it either started inside the cliff
-     * and reported a buried block as the surface, or missed the low ground entirely -- and every
-     * test in this file ran on flat ground, which is exactly why neither showed up.
-     * </p>
-     */
     private static final int LOW_Y = 63;
     private static final int HIGH_Y = 93;
-
-    private static class CliffWorld extends NullWorld {
-
-        @Override
-        public BaseBlock getBlock(Vector position) {
-            int top = (position.getBlockX() >= 0) ? HIGH_Y : LOW_Y;
-            int y = position.getBlockY();
-            if (y > top) return new BaseBlock(BlockID.AIR);
-            if (y == top) return new BaseBlock(BlockID.GRASS);
-            if (y >= top - 3) return new BaseBlock(BlockID.DIRT);
-            return new BaseBlock(BlockID.STONE);
-        }
-
-        @Override
-        public BaseBlock getLazyBlock(Vector position) {
-            return getBlock(position);
-        }
-    }
-
-    /**
-     * Flat ground with a plant standing on every column.
-     *
-     * <p>
-     * Double plants are used because {@code isFoliage} recognises them by block id before it
-     * consults the block registry, and the registry is not bootstrapped headlessly -- a grass tuft
-     * would read as solid terrain here and prove nothing.
-     * </p>
-     */
-    private static class PlantedWorld extends NullWorld {
-
-        @Override
-        public BaseBlock getBlock(Vector position) {
-            int y = position.getBlockY();
-            if (y > SURFACE_Y + 1) return new BaseBlock(BlockID.AIR);
-            if (y == SURFACE_Y + 1) return new BaseBlock(BlockID.DOUBLE_PLANT);
-            if (y == SURFACE_Y) return new BaseBlock(BlockID.GRASS);
-            if (y >= SURFACE_Y - 3) return new BaseBlock(BlockID.DIRT);
-            return new BaseBlock(BlockID.STONE);
-        }
-
-        @Override
-        public BaseBlock getLazyBlock(Vector position) {
-            return getBlock(position);
-        }
-    }
-
-    /**
-     * A two-block ledge jutting out over nothing, beside ground ten blocks lower.
-     *
-     * <p>
-     * This is the shape a sphere leaves when it is dropped into a steep hillside and part of it
-     * hangs out over the drop. The ledge matters because its top is level with what the probe is
-     * already walking along, so the height map picks it up as a surface like any other -- while
-     * having only two blocks of material under it.
-     * </p>
-     */
     private static final int LEDGE_Y = 80;
     private static final int VALLEY_Y = 70;
 
-    private static class LedgeWorld extends NullWorld {
-
-        @Override
-        public BaseBlock getBlock(Vector position) {
-            int y = position.getBlockY();
-
-            if (position.getBlockX() < 0) {
-                boolean ledge = y == LEDGE_Y || y == LEDGE_Y - 1;
-                return new BaseBlock(ledge ? BlockID.STONE : BlockID.AIR);
-            }
-
-            if (y > VALLEY_Y) return new BaseBlock(BlockID.AIR);
-            if (y == VALLEY_Y) return new BaseBlock(BlockID.GRASS);
-            if (y >= VALLEY_Y - 3) return new BaseBlock(BlockID.DIRT);
-            return new BaseBlock(BlockID.STONE);
-        }
-
-        @Override
-        public BaseBlock getLazyBlock(Vector position) {
-            return getBlock(position);
-        }
-    }
-
-    private static BrushParams params(int radius, double strength) {
-        return new BrushParams(radius, new BaseBlock(BlockID.STONE), 1, strength, 0.0D, false);
-    }
-
-    private static BrushParams smoothingParams(int radius, double strength, double autoSmooth) {
-        return new BrushParams(radius, new BaseBlock(BlockID.STONE), 1, strength, autoSmooth, false);
-    }
-
-    /**
-     * Raising grassy ground should not produce a solid block of grass. The old surface is buried
-     * and becomes filler; the surface block is re-laid on the new top.
-     */
+    /** A raise of grassy ground puts the grass on the new top, and dirt under the grass. */
     @Test
     public void raiseKeepsTheSurfaceBlockOnTopAndBuriesTheRestAsFiller() throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
-        SculptorBrush.RAISE.apply(ctx, new Vector(0, SURFACE_Y, 0), params(4, 1.0D));
+        final SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
+        SculptorBrush.RAISE.apply(ctx, new Vector(0, SURFACE_Y, 0), createParams(4, 1.0D));
 
-        Map<BlockVector, BaseBlock> changes = ctx.getPendingChanges();
+        final Map<BlockVector, BaseBlock> changes = ctx.getPendingChanges();
 
-        // The centre column is fully weighted, so it rises furthest.
+        // the centre column has the full weight, and the highest top
         int top = Integer.MIN_VALUE;
         for (BlockVector pos : changes.keySet()) {
             if (pos.getBlockX() == 0 && pos.getBlockZ() == 0) {
@@ -185,28 +48,27 @@ public class BrushBehaviourTest {
                 .getType());
 
         for (int y = SURFACE_Y; y < top; y++) {
-            BaseBlock buried = changes.get(new BlockVector(0, y, 0));
+            final BaseBlock buried = changes.get(new BlockVector(0, y, 0));
             assertEquals("buried layer at y=" + y + " should be filler, not surface", BlockID.DIRT, buried.getType());
         }
     }
 
     /**
-     * The placement mask governs what may be built over, so it must not stop a brush removing
-     * anything. With air-only selected, every carving brush would otherwise be silently inert --
-     * they write air, and air is never placeable over a block that is not already air.
+     * The placement mask applies to placements and not to removals. A removal writes air, and {@code AIR_ONLY} allows
+     * air only over air, so a mask on removals stops every carving brush.
      */
     @Test
     public void airOnlyMaskDoesNotBlockRemoval() throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
+        final SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
         ctx.setPlacementMask(PlacementMask.AIR_ONLY);
 
         assertTrue(
             "removing a solid block must be allowed regardless of the placement mask",
             ctx.setBlock(new Vector(0, SURFACE_Y, 0), new BaseBlock(BlockID.AIR)));
 
-        SculptorEditContext lowering = SculptorEditContext.preview(new LayeredWorld());
+        final SculptorEditContext lowering = SculptorEditContext.preview(new LayeredWorld());
         lowering.setPlacementMask(PlacementMask.AIR_ONLY);
-        SculptorBrush.LOWER.apply(lowering, new Vector(0, SURFACE_Y, 0), params(3, 1.0D));
+        SculptorBrush.LOWER.apply(lowering, new Vector(0, SURFACE_Y, 0), createParams(3, 1.0D));
 
         assertTrue(
             "lower must still carve with an air-only mask set",
@@ -215,26 +77,22 @@ public class BrushBehaviourTest {
     }
 
     /**
-     * Auto-smooth has to reach past the brush, otherwise it rounds the new shape in isolation
-     * and leaves the seam where it meets untouched ground.
+     * Auto-smooth reaches past the brush radius, to blend the seam between the new shape and the ground.
      *
      * <p>
-     * Checked on a placement brush rather than raise. Raise already tapers with a smoothstep
-     * falloff, so on even ground it produces a profile whose 3x3 mean is itself -- there is
-     * genuinely nothing left to smooth. A sphere dropped into the ground is the case that leaves
-     * a hard edge, and the one the pass exists for.
+     * The test uses a sphere and not raise. Raise tapers with a smoothstep falloff, so on even ground the 3 by 3 mean
+     * of the raised ground is the same ground. A sphere in the ground leaves a hard edge.
      * </p>
      */
     @Test
     public void autoSmoothAffectsGroundBeyondTheBrushRadius() throws Exception {
-        int radius = 4;
+        final int radius = 4;
 
-        SculptorEditContext plain = SculptorEditContext.preview(new LayeredWorld());
-        SculptorBrush.SPHERE.apply(plain, new Vector(0, SURFACE_Y, 0), params(radius, 1.0D));
+        final SculptorEditContext plain = SculptorEditContext.preview(new LayeredWorld());
+        SculptorBrush.SPHERE.apply(plain, new Vector(0, SURFACE_Y, 0), createParams(radius, 1.0D));
 
-        SculptorEditContext smoothed = SculptorEditContext.preview(new LayeredWorld());
-        BrushParams withSmoothing = new BrushParams(radius, new BaseBlock(BlockID.STONE), 1, 1.0D, 0.8D, false);
-        SculptorBrush.SPHERE.apply(smoothed, new Vector(0, SURFACE_Y, 0), withSmoothing);
+        final SculptorEditContext smoothed = SculptorEditContext.preview(new LayeredWorld());
+        SculptorBrush.SPHERE.apply(smoothed, new Vector(0, SURFACE_Y, 0), createSmoothingParams(radius, 1.0D, 0.8D));
 
         assertTrue(
             "auto-smooth should have touched more than the placement alone",
@@ -251,27 +109,17 @@ public class BrushBehaviourTest {
         assertTrue("smoothing should reach beyond the brush radius, got " + furthest, furthest > radius);
     }
 
-    /**
-     * Lowering must re-lay the surface block, not just cut the column away.
-     *
-     * <p>
-     * Simply removing blocks exposes the filler underneath, leaving bare dirt on top of every
-     * column the brush touched -- which is what a terraced, dirt-capped hillside looks like.
-     * </p>
-     */
+    /** Lower puts the surface block on the new top. A plain cut leaves bare dirt on each column. */
     @Test
     public void lowerLeavesTheSurfaceBlockOnTopNotExposedFiller() throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
-        SculptorBrush.LOWER.apply(ctx, new Vector(0, SURFACE_Y, 0), params(4, 1.0D));
+        final SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
+        SculptorBrush.LOWER.apply(ctx, new Vector(0, SURFACE_Y, 0), createParams(4, 1.0D));
 
-        Map<BlockVector, BaseBlock> changes = ctx.getPendingChanges();
+        final Map<BlockVector, BaseBlock> changes = ctx.getPendingChanges();
         assertTrue("lower should have changed something", !changes.isEmpty());
 
-        // Walk each touched column down to its new top and check what is capping it.
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                int x = dx;
-                int z = dz;
+        for (int x = -2; x <= 2; x++) {
+            for (int z = -2; z <= 2; z++) {
                 int top = Integer.MIN_VALUE;
                 for (int y = SURFACE_Y; y >= SURFACE_Y - 8; y--) {
                     if (!ctx.isAir(new Vector(x, y, z))) {
@@ -290,13 +138,10 @@ public class BrushBehaviourTest {
         }
     }
 
-    /**
-     * A grass block that ends up buried must not stay grass.
-     */
     @Test
     public void raiseDoesNotLeaveGrassBuriedUnderTheNewSurface() throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
-        SculptorBrush.RAISE.apply(ctx, new Vector(0, SURFACE_Y, 0), params(4, 1.0D));
+        final SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
+        SculptorBrush.RAISE.apply(ctx, new Vector(0, SURFACE_Y, 0), createParams(4, 1.0D));
 
         int top = Integer.MIN_VALUE;
         for (int y = SURFACE_Y + 8; y >= SURFACE_Y; y--) {
@@ -317,22 +162,16 @@ public class BrushBehaviourTest {
     }
 
     /**
-     * Smoothing a slope must not hollow it out.
-     *
-     * <p>
-     * Where a column's real top sat above the old search window, the downward scan began inside
-     * the hill and handed back a buried block as the surface. Lowering then cleared from there
-     * down and left everything above untouched -- an intact slab of terrain over a fresh cavity,
-     * which is what aggressive smoothing on a steep face actually produced.
-     * </p>
+     * Smooth on a cliff does not carve a cavity under a roof of terrain. A surface search in a fixed window from the
+     * centre would start inside the hill and return a buried block, and smooth would cut down from that block.
      */
     @Test
     public void smoothDoesNotCarveACavityUnderAnIntactRoof() throws Exception {
-        int radius = 8;
-        SculptorEditContext ctx = SculptorEditContext.preview(new CliffWorld());
+        final int radius = 8;
+        final SculptorEditContext ctx = SculptorEditContext.preview(new CliffWorld());
 
-        // Aimed at the low ground, so the cliff top is far above the old window.
-        SculptorBrush.SMOOTH.apply(ctx, new Vector(-1, LOW_Y, 0), params(radius, 1.0D));
+        // the brush is on the low ground, and the cliff top is outside a window of radius + 1 from the centre
+        SculptorBrush.SMOOTH.apply(ctx, new Vector(-1, LOW_Y, 0), createParams(radius, 1.0D));
 
         assertTrue(
             "smooth should have changed something",
@@ -350,8 +189,7 @@ public class BrushBehaviourTest {
                 }
                 if (top == Integer.MIN_VALUE) continue;
 
-                // Ground was solid all the way down before the stroke, so any air below the new
-                // top is a hole that was carved under a roof rather than off it.
+                // each column was solid down from the top before the stroke, so air under the new top is a cavity
                 for (int y = top; y >= LOW_Y - 8; y--) {
                     assertTrue(
                         "column (" + x + "," + z + ") has air at y=" + y + " under solid ground at y=" + top,
@@ -362,26 +200,18 @@ public class BrushBehaviourTest {
     }
 
     /**
-     * Raise must lift every column under the brush, not the subset that happens to fall in a
-     * window.
-     *
-     * <p>
-     * With the window anchored to the brush centre, ground more than {@code radius + 1} below it
-     * reported no surface at all and was skipped -- so on a slope, whichever columns poked above
-     * that boundary rose and their neighbours did not. That is the scatter of stray single blocks
-     * a large-radius raise left behind, and there is no randomness in the brush to explain it.
-     * </p>
+     * Raise lifts each column under the brush, also ground 30 blocks below the centre. With a surface search in a fixed
+     * window, a column far below the centre would have no surface, and raise would skip the column.
      */
     @Test
     public void raiseLiftsGroundFarBelowTheBrushCentre() throws Exception {
-        int radius = 10;
-        SculptorEditContext ctx = SculptorEditContext.preview(new CliffWorld());
+        final int radius = 10;
+        final SculptorEditContext ctx = SculptorEditContext.preview(new CliffWorld());
 
-        // Aimed at the cliff top; the low ground is 30 blocks down, well outside the old window.
-        SculptorBrush.RAISE.apply(ctx, new Vector(0, HIGH_Y, 0), params(radius, 1.0D));
+        SculptorBrush.RAISE.apply(ctx, new Vector(0, HIGH_Y, 0), createParams(radius, 1.0D));
 
-        // Half a radius out on the low side: smoothstep(0.5) = 0.5, so a maxLift of 10 gives 5.
-        int expectedTop = LOW_Y + 5;
+        // half a radius out on the low side, smoothstep(0.5) = 0.5, so the lift of 10 at the centre is 5 here
+        final int expectedTop = LOW_Y + 5;
         for (int dz = -1; dz <= 1; dz++) {
             assertTrue(
                 "low ground at (-5," + dz + ") should have risen to y=" + expectedTop,
@@ -393,32 +223,17 @@ public class BrushBehaviourTest {
     }
 
     /**
-     * Plants must not be left hanging where the ground under them was cut away.
-     *
-     * <p>
-     * Surface finding looks past foliage to the ground below it, so foliage sits above the range
-     * the lowering pass clears and used to survive the column dropping out from under it.
-     * </p>
-     */
-    /**
-     * "Air only" has to bind the auto-smooth pass as well.
-     *
-     * <p>
-     * The mask governs building, not carving, so that choosing it does not silently disable
-     * every brush that removes blocks. But auto-smooth is a pass the player did not ask for, and
-     * it lowers columns -- so under "air only" it was quietly eating the ground around whatever
-     * had just been placed, which is the one thing that setting exists to prevent.
-     * </p>
+     * Under {@code AIR_ONLY}, the auto-smooth pass removes no block that was there before the stroke. The player did
+     * not choose the pass, and a column can go down in the pass.
      */
     @Test
     public void autoSmoothUnderAirOnlyDoesNotCutIntoExistingGround() throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(new CliffWorld());
+        final SculptorEditContext ctx = SculptorEditContext.preview(new CliffWorld());
         ctx.setPlacementMask(PlacementMask.AIR_ONLY);
-        // Beside the cliff, so the smoothing pass reaches ground far higher than the placement
-        // and wants to pull it down.
-        SculptorBrush.SPHERE.apply(ctx, new Vector(-1, LOW_Y, 0), smoothingParams(4, 1.0D, 0.8D));
+        // beside the cliff, the smoothing disc reaches ground far above the placement
+        SculptorBrush.SPHERE.apply(ctx, new Vector(-1, LOW_Y, 0), createSmoothingParams(4, 1.0D, 0.8D));
 
-        CliffWorld before = new CliffWorld();
+        final CliffWorld before = new CliffWorld();
         for (Map.Entry<BlockVector, BaseBlock> change : ctx.getPendingChanges()
             .entrySet()) {
             if (change.getValue()
@@ -431,24 +246,18 @@ public class BrushBehaviourTest {
                     .getType());
         }
 
-        // An inert brush would satisfy the loop above by changing nothing.
+        // a brush that changes nothing passes the loop above
         assertTrue("the sphere should still have been placed", !ctx.isAir(new Vector(-1, LOW_Y + 2, 0)));
     }
 
     /**
-     * Smoothing must not leave material hanging in the air.
-     *
-     * <p>
-     * A ledge with nothing under it still reads as a surface to the height map, so smoothing
-     * would clear the gap beneath it and stamp a fresh surface block into thin air -- one per
-     * column, which is a floating shelf. There is no connected surface there to smooth, so the
-     * column is left exactly as it is.
-     * </p>
+     * Smooth writes no solid block over air. The height map reads the top of a ledge as a surface, and a cut under the
+     * ledge followed by a new surface block leaves a floating shelf.
      */
     @Test
     public void smoothLeavesUnsupportedLedgesAlone() throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(new LedgeWorld());
-        SculptorBrush.SMOOTH.apply(ctx, new Vector(0, LEDGE_Y, 0), params(6, 1.0D));
+        final SculptorEditContext ctx = SculptorEditContext.preview(new LedgeWorld());
+        SculptorBrush.SMOOTH.apply(ctx, new Vector(0, LEDGE_Y, 0), createParams(6, 1.0D));
 
         assertTrue(
             "smooth should have changed something",
@@ -460,19 +269,126 @@ public class BrushBehaviourTest {
             if (change.getValue()
                 .getType() == BlockID.AIR) continue;
 
-            BlockVector pos = change.getKey();
+            final BlockVector pos = change.getKey();
             assertTrue(
                 "solid block written at " + pos + " has nothing under it",
                 !ctx.isAir(new Vector(pos.getBlockX(), pos.getBlockY() - 1, pos.getBlockZ())));
         }
     }
 
+    /**
+     * Lower removes the plant on each column that lower cuts. The surface search looks past foliage, so the plant is
+     * above the cut.
+     */
     @Test
     public void lowerDoesNotLeaveFoliageFloating() throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(new PlantedWorld());
-        SculptorBrush.LOWER.apply(ctx, new Vector(0, SURFACE_Y, 0), params(4, 1.0D));
+        final SculptorEditContext ctx = SculptorEditContext.preview(new PlantedWorld());
+        SculptorBrush.LOWER.apply(ctx, new Vector(0, SURFACE_Y, 0), createParams(4, 1.0D));
 
         assertTrue("the plant over the centre column should be gone", ctx.isAir(new Vector(0, SURFACE_Y + 1, 0)));
     }
 
+    private static BrushParams createParams(int radius, double strength) {
+        return createSmoothingParams(radius, strength, 0.0D);
+    }
+
+    private static BrushParams createSmoothingParams(int radius, double strength, double autoSmooth) {
+        return BrushParams.builder()
+            .radius(radius)
+            .material(new BaseBlock(BlockID.STONE))
+            .secondary(1)
+            .strength(strength)
+            .autoSmooth(autoSmooth)
+            .useSelectedMaterial(false)
+            .build();
+    }
+
+    /** Grass over 3 blocks of dirt over stone, with the grass at {@link #SURFACE_Y}. */
+    private static class LayeredWorld extends NullWorld {
+
+        @Override
+        public BaseBlock getLazyBlock(Vector position) {
+            return getBlock(position);
+        }
+
+        @Override
+        public BaseBlock getBlock(Vector position) {
+            final int y = position.getBlockY();
+            if (y > SURFACE_Y) return new BaseBlock(BlockID.AIR);
+            if (y == SURFACE_Y) return new BaseBlock(BlockID.GRASS);
+            if (y >= SURFACE_Y - 3) return new BaseBlock(BlockID.DIRT);
+            return new BaseBlock(BlockID.STONE);
+        }
+    }
+
+    /**
+     * A cliff 30 blocks high, taller than any brush radius: ground at {@link #LOW_Y} for x below 0, and at
+     * {@link #HIGH_Y} from x = 0.
+     */
+    private static class CliffWorld extends NullWorld {
+
+        @Override
+        public BaseBlock getLazyBlock(Vector position) {
+            return getBlock(position);
+        }
+
+        @Override
+        public BaseBlock getBlock(Vector position) {
+            final int top = (position.getBlockX() >= 0) ? HIGH_Y : LOW_Y;
+            final int y = position.getBlockY();
+            if (y > top) return new BaseBlock(BlockID.AIR);
+            if (y == top) return new BaseBlock(BlockID.GRASS);
+            if (y >= top - 3) return new BaseBlock(BlockID.DIRT);
+            return new BaseBlock(BlockID.STONE);
+        }
+    }
+
+    /**
+     * Flat ground with a double plant on each column. {@code Vegetation.isFoliage()} checks a double plant by block id,
+     * with no block registry. A headless test has no block registry. A grass tuft reads as solid ground here.
+     */
+    private static class PlantedWorld extends NullWorld {
+
+        @Override
+        public BaseBlock getLazyBlock(Vector position) {
+            return getBlock(position);
+        }
+
+        @Override
+        public BaseBlock getBlock(Vector position) {
+            final int y = position.getBlockY();
+            if (y > SURFACE_Y + 1) return new BaseBlock(BlockID.AIR);
+            if (y == SURFACE_Y + 1) return new BaseBlock(BlockID.DOUBLE_PLANT);
+            if (y == SURFACE_Y) return new BaseBlock(BlockID.GRASS);
+            if (y >= SURFACE_Y - 3) return new BaseBlock(BlockID.DIRT);
+            return new BaseBlock(BlockID.STONE);
+        }
+    }
+
+    /**
+     * A stone ledge 2 blocks thick at {@link #LEDGE_Y} for x below 0, with air under the ledge, beside a valley at
+     * {@link #VALLEY_Y}. A sphere on a steep hillside leaves this shape where the sphere hangs over the drop.
+     */
+    private static class LedgeWorld extends NullWorld {
+
+        @Override
+        public BaseBlock getLazyBlock(Vector position) {
+            return getBlock(position);
+        }
+
+        @Override
+        public BaseBlock getBlock(Vector position) {
+            final int y = position.getBlockY();
+
+            if (position.getBlockX() < 0) {
+                final boolean ledge = y == LEDGE_Y || y == LEDGE_Y - 1;
+                return new BaseBlock(ledge ? BlockID.STONE : BlockID.AIR);
+            }
+
+            if (y > VALLEY_Y) return new BaseBlock(BlockID.AIR);
+            if (y == VALLEY_Y) return new BaseBlock(BlockID.GRASS);
+            if (y >= VALLEY_Y - 3) return new BaseBlock(BlockID.DIRT);
+            return new BaseBlock(BlockID.STONE);
+        }
+    }
 }

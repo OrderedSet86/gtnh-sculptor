@@ -1,18 +1,3 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.proxy;
 
 import net.minecraftforge.client.ClientCommandHandler;
@@ -25,14 +10,15 @@ import com.gtnh.sculptor.render.GhostRenderer;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 
+/** Registers the client-only handlers: the brush tool, the free camera, the ghost renderer and {@code /scpath}. */
 public class ClientProxy extends CommonProxy {
 
     @Override
     public void registerHandlers() {
         super.registerHandlers();
 
-        // Key input and ticks arrive on the FML bus; mouse, overlay and RenderWorldLastEvent on
-        // the Forge bus, so the tools that use both need registering twice.
+        // Forge 1.7.10 posts key input and ticks on the FML bus, and mouse, overlay and render events on the Forge bus.
+        // Register a tool with handlers of both kinds on both buses
         SculptorBrushTool brushTool = new SculptorBrushTool();
         FMLCommonHandler.instance()
             .bus()
@@ -47,8 +33,7 @@ public class ClientProxy extends CommonProxy {
 
         MinecraftForge.EVENT_BUS.register(GhostRenderer.instance());
 
-        // Camera paths are client state, so the command that saves them has to be a client
-        // command -- the server never sees a path and would have nothing to save.
+        // a camera path never reaches the server, so the command that saves a path is a client command
         ClientCommandHandler.instance.registerCommand(new SculptorPathCommand());
     }
 

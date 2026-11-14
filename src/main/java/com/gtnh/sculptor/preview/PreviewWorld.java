@@ -1,18 +1,3 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.preview;
 
 import java.util.Map;
@@ -27,55 +12,33 @@ import com.sk89q.worldedit.BlockVector;
 import com.sk89q.worldedit.blocks.BaseBlock;
 
 /**
- * A read-only view of the world as it <em>would</em> look with a set of pending changes
- * applied.
+ * A read-only view of the world with the changes of a preview applied, for {@code RenderBlocks}.
  *
  * <p>
- * Positions with a pending change report that change; everything else reads through to the
- * real world. That fall-through matters for more than convenience: {@code RenderBlocks} asks
- * this view about neighbouring blocks to decide which faces to emit, so delegating means the
- * ghost is culled against existing terrain exactly as the committed result would be. A sphere
- * carved inside a hill renders only the faces you would actually end up seeing.
- * </p>
- *
- * <p>
- * This is the same trick Schematica uses to render a schematic overlay, narrowed to a sparse
- * change set rather than a dense array.
+ * A position with a change reads the change, and any other position reads the world. {@code RenderBlocks} reads the
+ * neighbours of a block to cull faces, so the ghost is culled against the terrain as the committed result is.
  * </p>
  */
 public class PreviewWorld implements IBlockAccess {
 
-    /**
-     * Above this many cells the change set is left in its map rather than unpacked.
-     *
-     * <p>
-     * The grid is sized by the bounding box, so a brush that touches two far-apart columns would
-     * otherwise reserve everything between them. Sixteen megabytes of references is far more than
-     * any brush the client can ask for -- a maximum-radius sphere needs 69,000 cells.
-     * </p>
-     */
+    // the grid spans the bounding box of the changes, so two distant columns would reserve the space between them. A
+    // sphere of the maximum client radius of 20 needs about 69,000 cells
     private static final int MAX_GRID_CELLS = 2_000_000;
 
     private final IBlockAccess delegate;
     private final Map<BlockVector, BaseBlock> pending;
 
-    /**
-     * The change set unpacked into its bounding box, or null if it was too sparse to be worth it.
-     *
-     * <p>
-     * This exists because of how much {@code RenderBlocks} asks. Baking one block costs thirteen
-     * to twenty queries -- seven brightness lookups, six {@code shouldSideBeRendered} calls, the
-     * bounds and the colour -- and each one used to allocate a {@code BlockVector} and probe a
-     * map of tens of thousands of entries, whose {@code equals} runs three virtual calls and
-     * three double-to-int conversions. A maximum-radius sphere therefore spent over half a
-     * million allocations and hash probes on a single bake, and re-baked up to twenty times a
-     * second while the crosshair moved. Indexing an array costs neither.
-     * </p>
-     */
+    // the changes unpacked into their bounding box, or null above MAX_GRID_CELLS. RenderBlocks makes 13 to 20 queries
+    // per block. A map lookup allocates a BlockVector, and BlockVector.equals() makes three virtual calls, so a bake of
+    // a large sphere through the map would make over half a million allocations. An array index allocates nothing
     private final BaseBlock[] grid;
     private final int minX, minY, minZ;
     private final int sizeX, sizeY, sizeZ;
 
+    /**
+     * Build the view, and unpack the changes into an array over their bounding box when the box has at most
+     * {@link #MAX_GRID_CELLS} cells.
+     */
     public PreviewWorld(IBlockAccess delegate, Map<BlockVector, BaseBlock> pending) {
         this.delegate = delegate;
         this.pending = pending;
@@ -108,7 +71,7 @@ public class PreviewWorld implements IBlockAccess {
         this.sizeY = highY - lowY + 1;
         this.sizeZ = highZ - lowZ + 1;
 
-        // References into the map's own blocks, not copies: nothing mutates them after a bake.
+        // the grid refers to the blocks of the map, not to copies. Nothing changes a block of a preview after the bake
         this.grid = new BaseBlock[(int) cells];
         for (Map.Entry<BlockVector, BaseBlock> entry : pending.entrySet()) {
             BlockVector position = entry.getKey();
@@ -120,30 +83,10 @@ public class PreviewWorld implements IBlockAccess {
         return ((y - minY) * sizeZ + (z - minZ)) * sizeX + (x - minX);
     }
 
-    private BaseBlock pendingAt(int x, int y, int z) {
-        if (grid == null) {
-            return pending.get(new BlockVector(x, y, z));
-        }
-
-        int dx = x - minX, dy = y - minY, dz = z - minZ;
-        if (dx < 0 || dy < 0 || dz < 0 || dx >= sizeX || dy >= sizeY || dz >= sizeZ) return null;
-        return grid[(dy * sizeZ + dz) * sizeX + dx];
-    }
-
     /**
-     * Whether every face of this block is buried under another pending block.
-     *
-     * <p>
-     * Most of a solid brush is interior. Those blocks emit no quads, because
-     * {@code shouldSideBeRendered} rejects all six faces, but only after {@code RenderBlocks} has
-     * done the whole per-block dance to find that out -- roughly four blocks in five of a sphere,
-     * paying full price for nothing. Asking first is six array reads.
-     * </p>
-     *
-     * <p>
-     * Only pending neighbours count. A neighbour that is untouched world might still hide a face,
-     * but establishing that costs a real chunk lookup, which is the expense this avoids.
-     * </p>
+     * Report whether a changed block that is opaque is on each of the six sides. Most of a solid brush is interior, and
+     * {@code RenderBlocks} draws no face of an interior block, but only after the full work for the block. This check
+     * is six array reads. An unchanged neighbour is not checked, because that check costs a chunk lookup.
      */
     public boolean isHiddenByPendingNeighbours(int x, int y, int z) {
         return opaquePendingAt(x + 1, y, z) && opaquePendingAt(x - 1, y, z)
@@ -159,6 +102,16 @@ public class PreviewWorld implements IBlockAccess {
 
         Block block = Block.getBlockById(pendingBlock.getType());
         return block != null && block.isOpaqueCube();
+    }
+
+    private BaseBlock pendingAt(int x, int y, int z) {
+        if (grid == null) {
+            return pending.get(new BlockVector(x, y, z));
+        }
+
+        int dx = x - minX, dy = y - minY, dz = z - minZ;
+        if (dx < 0 || dy < 0 || dz < 0 || dx >= sizeX || dy >= sizeY || dz >= sizeZ) return null;
+        return grid[(dy * sizeZ + dz) * sizeX + dx];
     }
 
     @Override
@@ -183,6 +136,7 @@ public class PreviewWorld implements IBlockAccess {
         return delegate.isAirBlock(x, y, z);
     }
 
+    /** The side solidity of the changed block, or of the world block at a position with no change. */
     @Override
     public boolean isSideSolid(int x, int y, int z, ForgeDirection side, boolean defaultValue) {
         BaseBlock block = pendingAt(x, y, z);
@@ -193,25 +147,22 @@ public class PreviewWorld implements IBlockAccess {
         return delegate.isSideSolid(x, y, z, side, defaultValue);
     }
 
-    /**
-     * Tile entities are not previewed. A pending change replaces whatever was there, so
-     * reporting the old world's tile entity would render a stale chest or machine inside the
-     * ghost.
-     */
+    // a changed position has no tile entity. With the tile entity of the world, the ghost would include a chest or
+    // machine from the world
     @Override
     public TileEntity getTileEntity(int x, int y, int z) {
         return (pendingAt(x, y, z) != null) ? null : delegate.getTileEntity(x, y, z);
     }
 
-    // Lighting, biome and redstone are read from the real world. The ghost is a preview, not a
-    // simulation -- relighting a pending edit is a separate problem and not worth solving to
-    // draw a translucent overlay.
+    // light, biome and redstone power come from the world, with no relight of the changes
 
+    /** The light of the world, with no relight of the changes. */
     @Override
     public int getLightBrightnessForSkyBlocks(int x, int y, int z, int minBlockLight) {
         return delegate.getLightBrightnessForSkyBlocks(x, y, z, minBlockLight);
     }
 
+    /** The redstone power of the world, with no change applied. */
     @Override
     public int isBlockProvidingPowerTo(int x, int y, int z, int side) {
         return delegate.isBlockProvidingPowerTo(x, y, z, side);

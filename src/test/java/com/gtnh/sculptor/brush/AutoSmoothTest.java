@@ -1,18 +1,3 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.brush;
 
 import static org.junit.Assert.assertTrue;
@@ -26,15 +11,13 @@ import com.sk89q.worldedit.blocks.BlockID;
 import com.sk89q.worldedit.world.NullWorld;
 
 /**
- * What the pass after a placement brush may and may not do.
+ * The limits of the auto-smooth pass after a placement brush, on a rough hillside.
  *
  * <p>
- * The two halves pull in opposite directions, which is why they are tested together. A cylinder
- * standing nineteen blocks proud of a hillside has to be able to taper all the way back down to
- * the ground, so cutting the stroke's own material cannot be bounded. Reshaping the hillside
- * itself has to be, or the same mean that tapers the shape hollows out the slope beside it and
- * raises pillars out of the valley below. Bounding both was the first attempt and it left the
- * placement standing as a flat-topped mesa.
+ * The pass may cut the material of the stroke down to the ground with no limit: a cylinder 19 blocks above a hillside
+ * tapers down to the ground. A cut into the hillside, or a raise, has a limit of {@code LEASH} blocks. With no limit,
+ * the mean that tapers the shape also hollows the slope beside the shape and raises pillars in the valley. With both
+ * limited, the placement stays a flat-topped mesa.
  * </p>
  */
 public class AutoSmoothTest {
@@ -43,101 +26,19 @@ public class AutoSmoothTest {
     private static final int HEIGHT = 19;
     private static final int CENTRE_Y = 85;
 
-    /** The leash in {@code SculptorBrush.apply}: two blocks, or a third of the radius. */
+    // the limit in SculptorBrush.apply(): 2 blocks, or a third of the radius
     private static final int LEASH = Math.max(2, Math.round(RADIUS / 3.0F));
 
-    private static int hash(int x, int z) {
-        int h = x * 374761393 + z * 668265263;
-        h = (h ^ (h >> 13)) * 1274126177;
-        return h ^ (h >> 16);
-    }
-
-    /** A hillside falling one block per step in x, with three blocks of roughness on it. */
-    private static class SlopeWorld extends NullWorld {
-
-        static int topAt(int x, int z) {
-            return CENTRE_Y - x + (Math.floorMod(hash(x, z), 7) - 3);
-        }
-
-        @Override
-        public BaseBlock getBlock(Vector position) {
-            int top = topAt(position.getBlockX(), position.getBlockZ());
-            int y = position.getBlockY();
-            if (y > top) return new BaseBlock(BlockID.AIR);
-            if (y == top) return new BaseBlock(BlockID.GRASS);
-            if (y >= top - 3) return new BaseBlock(BlockID.DIRT);
-            return new BaseBlock(BlockID.STONE);
-        }
-
-        @Override
-        public BaseBlock getLazyBlock(Vector position) {
-            return getBlock(position);
-        }
-    }
-
-    private static SculptorEditContext stroke(double autoSmooth) throws Exception {
-        SculptorEditContext ctx = SculptorEditContext.preview(new SlopeWorld());
-        SculptorBrush.CYLINDER.apply(
-            ctx,
-            new Vector(0, CENTRE_Y, 0),
-            new BrushParams(RADIUS, new BaseBlock(BlockID.STONE), HEIGHT, 1.0D, autoSmooth, false));
-        return ctx;
-    }
-
-    private static int surfaceOf(SculptorEditContext ctx, int x, int z) {
-        for (int y = 220; y >= 0; y--) {
-            if (!ctx.isAir(new Vector(x, y, z))) return y;
-        }
-        return Integer.MIN_VALUE;
-    }
-
     /**
-     * How deep a gap sits under this column's topmost run of solid blocks; zero if that run
-     * reaches the ground.
-     *
-     * <p>
-     * Checking only the single block under the surface is not enough and was wrong here once: a
-     * nineteen-block slab hanging over a hillside has solid blocks under its top for eighteen of
-     * them, and reports as perfectly well supported.
-     * </p>
-     */
-    private static int gapUnder(SculptorEditContext ctx, int x, int z) {
-        int y = surfaceOf(ctx, x, z);
-        if (y == Integer.MIN_VALUE) return 0;
-
-        while (y >= 0 && !ctx.isAir(new Vector(x, y, z))) y--;
-        if (y < 0) return 0;
-
-        int gap = 0;
-        while (y >= 0 && ctx.isAir(new Vector(x, y, z))) {
-            gap++;
-            y--;
-        }
-        return (y < 0) ? 0 : gap;
-    }
-
-    private static int columnsLeftHanging(SculptorEditContext ctx, int span) {
-        int hanging = 0;
-        for (int dx = -span; dx <= span; dx++) {
-            for (int dz = -span; dz <= span; dz++) {
-                if (gapUnder(ctx, dx, dz) > 0) hanging++;
-            }
-        }
-        return hanging;
-    }
-
-    /**
-     * Measured against the same stroke with the pass switched off, so what is under test is the
-     * smoothing rather than the cylinder it follows. Measuring against the untouched world instead
-     * mostly measures the placement, which is how a 26-block "rise" got mistaken for a smoothing
-     * bug once already.
+     * Compare with the same stroke with the pass off, so the comparison is of the pass and not of the cylinder. Against
+     * the world before the stroke, the difference is mostly the placement and not the pass.
      */
     @Test
     public void autoSmoothTapersThePlacementWithoutReshapingTheHillside() throws Exception {
-        SculptorEditContext plain = stroke(0.0D);
-        SculptorEditContext smoothed = stroke(1.0D);
+        final SculptorEditContext plain = runStroke(0.0D);
+        final SculptorEditContext smoothed = runStroke(1.0D);
 
-        int span = RADIUS + Math.max(3, RADIUS / 2) + 2;
+        final int span = RADIUS + Math.max(3, RADIUS / 2) + 2;
 
         int taper = 0;
         int dugBelowGround = 0;
@@ -146,22 +47,22 @@ public class AutoSmoothTest {
 
         for (int dx = -span; dx <= span; dx++) {
             for (int dz = -span; dz <= span; dz++) {
-                int before = surfaceOf(plain, dx, dz);
-                int after = surfaceOf(smoothed, dx, dz);
+                final int before = findSurfaceY(plain, dx, dz);
+                final int after = findSurfaceY(smoothed, dx, dz);
                 if (before == Integer.MIN_VALUE || after == Integer.MIN_VALUE) continue;
 
-                int ground = SlopeWorld.topAt(dx, dz);
+                final int ground = SlopeWorld.computeTopY(dx, dz);
 
                 taper = Math.max(taper, before - after);
                 dugBelowGround = Math.max(dugBelowGround, ground - after);
                 raisedAboveGround = Math.max(raisedAboveGround, after - Math.max(before, ground));
 
-                floating += (gapUnder(smoothed, dx, dz) > 0) ? 1 : 0;
+                floating += (measureGapUnder(smoothed, dx, dz) > 0) ? 1 : 0;
             }
         }
 
         assertTrue(
-            "the pass must be free to shave the placement back to the ground; largest cut was only " + taper,
+            "the pass must be free to cut the placement back to the ground. The largest cut was only " + taper,
             taper > 2 * LEASH);
 
         assertTrue(
@@ -176,28 +77,103 @@ public class AutoSmoothTest {
     }
 
     /**
-     * A cylinder fills upward from the height it was aimed at, across its whole disc, so on a
-     * slope the downhill half of it has nothing underneath. Smoothing cannot fix that -- it is a
-     * height map, it moves the top of a column and never looks below it -- so the shape is
-     * extended down onto the ground first.
-     *
-     * <p>
-     * Tied to the auto-smooth slider on purpose. At zero a cylinder is exactly a cylinder,
-     * hanging base and all, which is what building in the air needs.
-     * </p>
+     * A cylinder fills up from the target height across the disc, so on a slope the downhill half has nothing under the
+     * cylinder. The smoothing pass is a height map, with no data under a shape, so the shape fills down to the ground
+     * before the pass. With auto-smooth at 0, the base of the cylinder stays in the air, for building in the air.
      */
     @Test
-    public void aShapeOnASlopeIsSettledOntoTheGroundOnlyWhenAutoSmoothIsOn() throws Exception {
-        int span = RADIUS + Math.max(3, RADIUS / 2) + 2;
+    public void shapeOnASlopeSettlesOntoTheGroundOnlyWhenAutoSmoothIsOn() throws Exception {
+        final int span = RADIUS + Math.max(3, RADIUS / 2) + 2;
 
-        int hangingWithout = columnsLeftHanging(stroke(0.0D), span);
-        int hangingWith = columnsLeftHanging(stroke(1.0D), span);
+        final int hangingWithout = countColumnsLeftHanging(runStroke(0.0D), span);
+        final int hangingWith = countColumnsLeftHanging(runStroke(1.0D), span);
 
         assertTrue(
-            "the test slope should leave the plain cylinder hanging, otherwise this proves nothing; got "
-                + hangingWithout,
+            "the test slope must leave the plain cylinder hanging, or the test proves nothing. Got " + hangingWithout,
             hangingWithout > 50);
 
         assertTrue("auto-smooth left " + hangingWith + " columns hanging over a gap", hangingWith == 0);
+    }
+
+    private static SculptorEditContext runStroke(double autoSmooth) throws Exception {
+        final SculptorEditContext ctx = SculptorEditContext.preview(new SlopeWorld());
+        SculptorBrush.CYLINDER.apply(
+            ctx,
+            new Vector(0, CENTRE_Y, 0),
+            BrushParams.builder()
+                .radius(RADIUS)
+                .material(new BaseBlock(BlockID.STONE))
+                .secondary(HEIGHT)
+                .strength(1.0D)
+                .autoSmooth(autoSmooth)
+                .useSelectedMaterial(false)
+                .build());
+        return ctx;
+    }
+
+    private static int countColumnsLeftHanging(SculptorEditContext ctx, int span) {
+        int hanging = 0;
+        for (int dx = -span; dx <= span; dx++) {
+            for (int dz = -span; dz <= span; dz++) {
+                if (measureGapUnder(ctx, dx, dz) > 0) hanging++;
+            }
+        }
+        return hanging;
+    }
+
+    /**
+     * Measure the air gap under the highest solid run in a column: 0 when the run reaches the ground. A check of the
+     * one block under the surface is not enough. A slab of 19 blocks over a hillside has a solid block under each of
+     * the top 18 blocks of the slab.
+     */
+    private static int measureGapUnder(SculptorEditContext ctx, int x, int z) {
+        int y = findSurfaceY(ctx, x, z);
+        if (y == Integer.MIN_VALUE) return 0;
+
+        while (y >= 0 && !ctx.isAir(new Vector(x, y, z))) y--;
+        if (y < 0) return 0;
+
+        int gap = 0;
+        while (y >= 0 && ctx.isAir(new Vector(x, y, z))) {
+            gap++;
+            y--;
+        }
+        return (y < 0) ? 0 : gap;
+    }
+
+    private static int findSurfaceY(SculptorEditContext ctx, int x, int z) {
+        for (int y = 220; y >= 0; y--) {
+            if (!ctx.isAir(new Vector(x, y, z))) return y;
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    /** A hillside that falls one block per block of x, with up to 3 blocks of roughness. */
+    private static class SlopeWorld extends NullWorld {
+
+        static int computeTopY(int x, int z) {
+            return CENTRE_Y - x + (Math.floorMod(computeHash(x, z), 7) - 3);
+        }
+
+        private static int computeHash(int x, int z) {
+            int h = x * 374761393 + z * 668265263;
+            h = (h ^ (h >> 13)) * 1274126177;
+            return h ^ (h >> 16);
+        }
+
+        @Override
+        public BaseBlock getLazyBlock(Vector position) {
+            return getBlock(position);
+        }
+
+        @Override
+        public BaseBlock getBlock(Vector position) {
+            final int top = computeTopY(position.getBlockX(), position.getBlockZ());
+            final int y = position.getBlockY();
+            if (y > top) return new BaseBlock(BlockID.AIR);
+            if (y == top) return new BaseBlock(BlockID.GRASS);
+            if (y >= top - 3) return new BaseBlock(BlockID.DIRT);
+            return new BaseBlock(BlockID.STONE);
+        }
     }
 }

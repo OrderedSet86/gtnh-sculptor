@@ -1,22 +1,8 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.edit;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -26,36 +12,26 @@ import com.sk89q.worldedit.entity.Player;
 import com.sk89q.worldedit.world.World;
 
 /**
- * Sculptor's own undo stack, per player, entirely separate from WorldEdit's.
+ * The undo history of brush strokes for each player, on the server, apart from the history of WorldEdit.
  *
  * <p>
- * Brush commits deliberately do not go through {@code LocalSession.remember}. A player using
- * both tools has two independent trails: {@code //undo} walks back their WorldEdit commands and
- * never touches a brush stroke, and Sculptor's undo walks back brush strokes and never disturbs
- * their selection work. Sharing one stack would mean an idle brush stroke silently consuming an
- * undo slot they were saving for a {@code //set}.
- * </p>
- *
- * <p>
- * Server-side state, keyed by UUID rather than by player object so a reconnect does not orphan
- * the history. Not persisted -- it lives as long as the server does, matching how WorldEdit
- * treats its own history.
+ * A commit is not recorded with {@code LocalSession.remember()}. So {@code //undo} reverts only WorldEdit commands, and
+ * {@code /scu} reverts only brush strokes. The history is keyed by player UUID, so the history of a player stays after
+ * a reconnect. The history is not saved when the server stops.
  * </p>
  */
 public final class SculptorHistory {
 
-    /**
-     * Kept close to WorldEdit's default of 15. Each entry retains the blocks it replaced, so a
-     * deep stack of large strokes is real memory.
-     */
+    // the default of WorldEdit. Each entry has the blocks that the stroke replaced, so a deep history uses much memory
     private static final int MAX_HISTORY = 15;
 
-    private static final Map<UUID, SculptorHistory> BY_PLAYER = new HashMap<UUID, SculptorHistory>();
+    // one history per player for the life of the server. Access is synchronized on the class
+    private static final Map<UUID, SculptorHistory> BY_PLAYER = new HashMap<>();
 
-    private final LinkedList<EditSession> history = new LinkedList<EditSession>();
+    private final List<EditSession> history = new ArrayList<>();
 
-    /** Index of the next slot to write; everything below it is undoable. */
-    private int pointer = 0;
+    // the entries below `pointer` can be undone, and the entries from `pointer` up can be redone
+    private int pointer;
 
     private SculptorHistory() {}
 
@@ -72,32 +48,21 @@ public final class SculptorHistory {
         BY_PLAYER.remove(playerId);
     }
 
-    /**
-     * Record a completed edit.
-     *
-     * <p>
-     * A new edit discards the redo tail, the same way every editor behaves: once you branch,
-     * the future you abandoned is gone.
-     * </p>
-     */
+    /** Record a committed stroke, and drop the strokes that were undone. */
     public synchronized void remember(EditSession session) {
         if (session == null || session.size() == 0) return;
 
         while (history.size() > pointer) {
-            history.removeLast();
+            history.remove(history.size() - 1);
         }
         history.add(session);
         while (history.size() > MAX_HISTORY) {
-            history.removeFirst();
+            history.remove(0);
         }
         pointer = history.size();
     }
 
-    /**
-     * Undo the most recent edit.
-     *
-     * @return true if something was undone
-     */
+    /** Undo the last stroke, and return {@code false} when there is none. */
     public synchronized boolean undo(Player player) {
         if (pointer <= 0) return false;
 
@@ -107,11 +72,7 @@ public final class SculptorHistory {
         return true;
     }
 
-    /**
-     * Redo the edit most recently undone.
-     *
-     * @return true if something was redone
-     */
+    /** Redo the last stroke undone, and return {@code false} when there is none. */
     public synchronized boolean redo(Player player) {
         if (pointer >= history.size()) return false;
 
@@ -125,15 +86,8 @@ public final class SculptorHistory {
         return pointer;
     }
 
-    /**
-     * A throwaway session for the reversal to be written through.
-     *
-     * <p>
-     * {@code EditSession.undo} only needs somewhere to write; it takes the reversal from the
-     * stored session's own change set. Nothing about {@code LocalSession} is involved, which is
-     * what lets this history stand on its own.
-     * </p>
-     */
+    // `EditSession.undo()` takes the reversal from the change set of the stored session, and writes the reversal
+    // through the argument session. The argument session has no LocalSession
     private static EditSession scratchSession(World world, Player player) {
         EditSession scratch = WorldEdit.getInstance()
             .getEditSessionFactory()

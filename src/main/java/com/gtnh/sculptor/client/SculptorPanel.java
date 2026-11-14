@@ -1,25 +1,15 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.client;
 
 import java.util.List;
+import java.util.function.DoubleConsumer;
+import java.util.function.DoubleSupplier;
+import java.util.function.Supplier;
 
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
+import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.StatCollector;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.screen.CustomModularScreen;
@@ -35,30 +25,25 @@ import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.gtnh.sculptor.brush.BrushSettings;
 import com.gtnh.sculptor.brush.SculptorBrush;
 import com.gtnh.sculptor.camera.CameraKeyframe;
+import com.gtnh.sculptor.camera.CameraPathException;
 import com.gtnh.sculptor.camera.CameraPathStore;
 import com.gtnh.sculptor.camera.CameraSettings;
 import com.gtnh.sculptor.camera.CameraSettings.PathSpeed;
 import com.gtnh.sculptor.camera.SculptorCameraController;
 
 /**
- * The editor panel: brush settings on the left, camera speeds on the right.
+ * The editor panel, a modal ModularUI2 screen with the brush settings on the left and the camera speeds on the right.
  *
  * <p>
- * Everything here edits {@link BrushSettings} or {@link CameraSettings} directly. Brush changes
- * bump a revision counter that the brush loop watches, so adjusting a value re-previews
- * immediately -- there is no apply button, and no way for the panel and the ghost to disagree.
- * </p>
- *
- * <p>
- * This is a modal screen. Axiom's equivalent is a docked panel that leaves the world
- * interactive, which ModularUI2 can do via its overlay/{@code HoloUI} support; that is a
- * worthwhile upgrade but a bigger piece of work than the panel itself, so the panel came first.
+ * Each control writes to {@link BrushSettings} or {@link CameraSettings} at once. A change of a brush setting
+ * increments the {@link BrushSettings#getRevision revision}, and {@link SculptorBrushTool} rebuilds the preview on the
+ * next tick.
  * </p>
  */
 public class SculptorPanel extends CustomModularScreen {
 
     private static final int PANEL_WIDTH = 320;
-    /** Tall enough for the brush column, which is the longer of the two: it ends at y=286. */
+    // the brush column is the longer column, and ends at y=286
     private static final int PANEL_HEIGHT = 292;
     private static final int ROW_HEIGHT = 18;
 
@@ -66,21 +51,12 @@ public class SculptorPanel extends CustomModularScreen {
     private static final int RIGHT_X = 168;
     private static final int COLUMN_WIDTH = 144;
 
-    /**
-     * The second parameter means something different per brush and has a different range, but a
-     * slider's bounds are fixed when it is built. Rather than rebuild the panel on every brush
-     * change, the slider spans the widest range any brush uses and {@code BrushSettings} clamps
-     * to whatever the current brush actually allows -- so dragging past a brush's maximum pins
-     * there, and the label always shows the value in effect.
-     */
+    // a slider has fixed bounds, and the range of the second parameter depends on the brush. The slider spans the
+    // widest range, and BrushSettings.setSecondary() clamps the value to the range of the brush
     private static final int SECONDARY_SLIDER_MAX = 32;
 
-    /**
-     * Result of the last save or load, shown under the buttons. Static because the panel is a
-     * fresh screen every time it is opened, and a message that vanished when you closed it would
-     * be gone before you could read a file-system error.
-     */
-    private static String pathStatus = "";
+    // the panel is a new screen on each open. The result of the last save or load stays for the next open
+    private static IKey pathStatus = IKey.EMPTY;
 
     @Override
     public ModularPanel buildUI(ModularGuiContext context) {
@@ -89,7 +65,7 @@ public class SculptorPanel extends CustomModularScreen {
         CameraSettings camera = CameraSettings.instance();
 
         panel.child(
-            new TextWidget<>("Sculptor").scale(1.2f)
+            new TextWidget<>(IKey.lang("sculptor.panel.title")).scale(1.2f)
                 .textAlign(Alignment.Center)
                 .left(0)
                 .right(0)
@@ -102,14 +78,15 @@ public class SculptorPanel extends CustomModularScreen {
         return panel;
     }
 
+    /** Add the brush controls to the left column, from y = 28 down. */
     private void buildBrushColumn(ModularPanel panel, BrushSettings settings) {
         int y = 28;
 
-        panel.child(label("Brush", LEFT_X, y));
+        panel.child(label("sculptor.panel.brush", LEFT_X, y));
         y += ROW_HEIGHT;
 
         panel.child(
-            new ButtonWidget<>().overlay(IKey.str("<"))
+            new ButtonWidget<>().overlay(IKey.lang("sculptor.panel.previous"))
                 .size(16, ROW_HEIGHT)
                 .left(LEFT_X)
                 .top(y)
@@ -122,16 +99,16 @@ public class SculptorPanel extends CustomModularScreen {
 
         panel.child(
             new TextWidget<>(
-                IKey.dynamic(
+                IKey.lang(
                     () -> settings.getBrush()
-                        .label())).textAlign(Alignment.Center)
+                        .getLangKey())).textAlign(Alignment.Center)
                             .left(LEFT_X + 20)
                             .width(COLUMN_WIDTH - 40)
                             .top(y)
                             .height(ROW_HEIGHT));
 
         panel.child(
-            new ButtonWidget<>().overlay(IKey.str(">"))
+            new ButtonWidget<>().overlay(IKey.lang("sculptor.panel.next"))
                 .size(16, ROW_HEIGHT)
                 .left(LEFT_X + COLUMN_WIDTH - 16)
                 .top(y)
@@ -143,7 +120,7 @@ public class SculptorPanel extends CustomModularScreen {
                 }));
         y += ROW_HEIGHT + 4;
 
-        panel.child(dynamicLabel(() -> "Radius: " + settings.getRadius(), LEFT_X, y));
+        panel.child(dynamicLabel(() -> "sculptor.panel.radius", () -> new Object[] { settings.getRadius() }, y));
         y += 12;
         panel.child(
             new SliderWidget().bounds(BrushSettings.MIN_RADIUS, BrushSettings.MAX_RADIUS)
@@ -158,9 +135,9 @@ public class SculptorPanel extends CustomModularScreen {
         y += 20;
 
         panel.child(dynamicLabel(() -> {
-            SculptorBrush b = settings.getBrush();
-            return b.hasSecondary() ? b.secondaryLabel() + ": " + settings.getSecondary() : "(no second parameter)";
-        }, LEFT_X, y));
+            final SculptorBrush brush = settings.getBrush();
+            return brush.hasSecondary() ? brush.getSecondaryLangKey() : "sculptor.panel.secondary.unused";
+        }, () -> new Object[] { settings.getSecondary() }, y));
         y += 12;
         panel.child(
             new SliderWidget().bounds(1, SECONDARY_SLIDER_MAX)
@@ -174,11 +151,12 @@ public class SculptorPanel extends CustomModularScreen {
                 .top(y));
         y += 20;
 
-        panel.child(dynamicLabel(() -> {
-            SculptorBrush b = settings.getBrush();
-            return b.usesStrength() ? String.format("Strength: %.0f%%", settings.getStrength() * 100.0D)
-                : "(strength unused)";
-        }, LEFT_X, y));
+        panel.child(
+            dynamicLabel(
+                () -> settings.getBrush()
+                    .usesStrength() ? "sculptor.panel.strength" : "sculptor.panel.strength.unused",
+                () -> new Object[] { Math.round(settings.getStrength() * 100.0D) },
+                y));
         y += 12;
         panel.child(
             new SliderWidget().bounds(0.05D, 1.0D)
@@ -188,10 +166,11 @@ public class SculptorPanel extends CustomModularScreen {
                 .top(y));
         y += 20;
 
-        panel.child(dynamicLabel(() -> "Material: " + materialName(settings), LEFT_X, y));
+        panel
+            .child(dynamicLabel(() -> "sculptor.panel.material", () -> new Object[] { readMaterialName(settings) }, y));
         y += 12;
         panel.child(
-            new ButtonWidget<>().overlay(IKey.str("Use held block"))
+            new ButtonWidget<>().overlay(IKey.lang("sculptor.panel.use_held_block"))
                 .size(COLUMN_WIDTH, 16)
                 .left(LEFT_X)
                 .top(y)
@@ -201,12 +180,11 @@ public class SculptorPanel extends CustomModularScreen {
                 }));
         y += 22;
 
-        // --- What placement brushes may write over -------------------------------------
         panel.child(
             new ButtonWidget<>().overlay(
-                IKey.dynamic(
+                IKey.lang(
                     () -> settings.getPlacementMask()
-                        .label()))
+                        .getLangKey()))
                 .size(COLUMN_WIDTH, 16)
                 .left(LEFT_X)
                 .top(y)
@@ -218,11 +196,12 @@ public class SculptorPanel extends CustomModularScreen {
                 }));
         y += 22;
 
-        // --- Build with the selected block rather than the existing surface -------------
         panel.child(
-            new ButtonWidget<>().overlay(
-                IKey.dynamic(
-                    () -> settings.isUseSelectedMaterial() ? "Material: selected block" : "Material: keep existing"))
+            new ButtonWidget<>()
+                .overlay(
+                    IKey.lang(
+                        () -> settings.isUseSelectedMaterial() ? "sculptor.panel.material.selected"
+                            : "sculptor.panel.material.existing"))
                 .size(COLUMN_WIDTH, 16)
                 .left(LEFT_X)
                 .top(y)
@@ -232,12 +211,11 @@ public class SculptorPanel extends CustomModularScreen {
                 }));
         y += 22;
 
-        // --- What becomes of a shape's overhang, when auto-smooth is on -----------------
         panel.child(
             new ButtonWidget<>().overlay(
-                IKey.dynamic(
+                IKey.lang(
                     () -> settings.getOverhang()
-                        .label()))
+                        .getLangKey()))
                 .size(COLUMN_WIDTH, 16)
                 .left(LEFT_X)
                 .top(y)
@@ -249,12 +227,11 @@ public class SculptorPanel extends CustomModularScreen {
                 }));
         y += 22;
 
-        // --- Smoothing applied after a placement brush ---------------------------------
         panel.child(
             dynamicLabel(
-                () -> (settings.getAutoSmooth() <= 0.0D) ? "Auto-smooth: off"
-                    : String.format("Auto-smooth: %.0f%%", settings.getAutoSmooth() * 100.0D),
-                LEFT_X,
+                () -> (settings.getAutoSmooth() <= 0.0D) ? "sculptor.panel.auto_smooth.off"
+                    : "sculptor.panel.auto_smooth",
+                () -> new Object[] { Math.round(settings.getAutoSmooth() * 100.0D) },
                 y));
         y += 12;
         panel.child(
@@ -265,28 +242,28 @@ public class SculptorPanel extends CustomModularScreen {
                 .top(y));
     }
 
+    /** Add the camera speed fields and the path buttons to the right column, from y = 28 down. */
     private void buildCameraColumn(ModularPanel panel, CameraSettings settings) {
         int y = 28;
 
-        panel.child(label("Camera (blocks/sec)", RIGHT_X, y));
+        panel.child(label("sculptor.panel.camera", RIGHT_X, y));
         y += ROW_HEIGHT + 2;
 
-        y = speedField(panel, "Fly", y, settings::getFlySpeed, settings::setFlySpeed);
+        panel.child(fieldLabel("sculptor.panel.fly_speed", y));
+        panel.child(speedField(y, settings::getFlySpeed, settings::setFlySpeed));
+        y += 20;
 
-        panel.child(label("Keyframe approach speeds", RIGHT_X, y));
+        panel.child(label("sculptor.panel.path_speeds", RIGHT_X, y));
         y += 14;
 
         for (final PathSpeed tier : PathSpeed.values()) {
-            y = speedField(
-                panel,
-                tier.label(),
-                y,
-                () -> settings.getPathSpeed(tier),
-                value -> settings.setPathSpeed(tier, value));
+            panel.child(fieldLabel(tier.getLangKey(), y));
+            panel.child(speedField(y, () -> settings.getPathSpeed(tier), value -> settings.setPathSpeed(tier, value)));
+            y += 20;
         }
 
         panel.child(
-            new TextWidget<>(IKey.str("A segment takes as long as its\nlength needs at its speed.")).scale(0.8f)
+            new TextWidget<>(IKey.lang("sculptor.panel.path_speeds.hint")).scale(0.8f)
                 .textAlign(Alignment.CenterLeft)
                 .left(RIGHT_X)
                 .width(COLUMN_WIDTH)
@@ -297,18 +274,9 @@ public class SculptorPanel extends CustomModularScreen {
         buildPathStorageRows(panel, settings, y);
     }
 
-    /**
-     * Save and load for the keyframed path.
-     *
-     * <p>
-     * The same two operations are on {@code /scpath}, which also lists and deletes. Both exist
-     * because they are used at different moments: the command when you know what the shot is
-     * called, these buttons when you are already in the panel adjusting the speeds the path will
-     * play at.
-     * </p>
-     */
+    /** The save and load buttons of the camera path. {@code /scpath} also lists and deletes paths. */
     private void buildPathStorageRows(ModularPanel panel, CameraSettings settings, int y) {
-        panel.child(label("Path file", RIGHT_X, y));
+        panel.child(label("sculptor.panel.path_file", RIGHT_X, y));
         y += 14;
 
         panel.child(
@@ -322,7 +290,7 @@ public class SculptorPanel extends CustomModularScreen {
         int buttonWidth = (COLUMN_WIDTH - 4) / 2;
 
         panel.child(
-            new ButtonWidget<>().overlay(IKey.str("Save"))
+            new ButtonWidget<>().overlay(IKey.lang("sculptor.panel.save"))
                 .size(buttonWidth, 16)
                 .left(RIGHT_X)
                 .top(y)
@@ -332,7 +300,7 @@ public class SculptorPanel extends CustomModularScreen {
                 }));
 
         panel.child(
-            new ButtonWidget<>().overlay(IKey.str("Load"))
+            new ButtonWidget<>().overlay(IKey.lang("sculptor.panel.load"))
                 .size(buttonWidth, 16)
                 .left(RIGHT_X + buttonWidth + 4)
                 .top(y)
@@ -343,7 +311,7 @@ public class SculptorPanel extends CustomModularScreen {
         y += 20;
 
         panel.child(
-            new TextWidget<>(IKey.dynamic(() -> pathStatus)).scale(0.8f)
+            new TextWidget<>(IKey.dynamicKey(() -> pathStatus)).scale(0.8f)
                 .textAlign(Alignment.CenterLeft)
                 .left(RIGHT_X)
                 .width(COLUMN_WIDTH)
@@ -351,92 +319,83 @@ public class SculptorPanel extends CustomModularScreen {
                 .height(20));
     }
 
+    /** Save the camera path under the name, and set {@code pathStatus} to the result. */
     private static void savePath(String name) {
-        SculptorCameraController camera = SculptorCameraController.instance();
+        final SculptorCameraController camera = SculptorCameraController.instance();
         if (camera == null) return;
 
         if (!CameraPathStore.isValidName(name)) {
-            pathStatus = "Name: letters, digits, _ and - only";
+            pathStatus = IKey.lang("sculptor.panel.status.bad_name");
             return;
         }
 
-        List<CameraKeyframe> path = camera.getPath();
+        final List<CameraKeyframe> path = camera.getPath();
         if (path.isEmpty()) {
-            pathStatus = "Nothing to save -- no keyframes";
+            pathStatus = IKey.lang("sculptor.panel.status.nothing_to_save");
             return;
         }
 
         try {
             CameraPathStore.instance()
                 .save(name, path);
-            pathStatus = "Saved " + path.size() + " keyframes";
-        } catch (Exception e) {
-            pathStatus = "Save failed: " + e.getMessage();
+            pathStatus = IKey.lang("sculptor.panel.status.saved", path.size());
+        } catch (CameraPathException exception) {
+            pathStatus = IKey.lang(exception.getLangKey(), exception.getFormatValues());
         }
     }
 
     private static void loadPath(String name) {
-        SculptorCameraController camera = SculptorCameraController.instance();
+        final SculptorCameraController camera = SculptorCameraController.instance();
         if (camera == null) return;
 
         if (!CameraPathStore.isValidName(name)) {
-            pathStatus = "Name: letters, digits, _ and - only";
+            pathStatus = IKey.lang("sculptor.panel.status.bad_name");
             return;
         }
 
         try {
-            List<CameraKeyframe> path = CameraPathStore.instance()
+            final List<CameraKeyframe> path = CameraPathStore.instance()
                 .load(name);
             camera.setPath(path);
-            pathStatus = "Loaded " + path.size() + " keyframes";
-        } catch (Exception e) {
-            pathStatus = "Load failed: " + e.getMessage();
+            pathStatus = IKey.lang("sculptor.panel.status.loaded", path.size());
+        } catch (CameraPathException exception) {
+            pathStatus = IKey.lang(exception.getLangKey(), exception.getFormatValues());
         }
     }
 
-    /**
-     * A labelled numeric entry. Decimals are allowed because a slow drift is often well under
-     * one block per second, where whole numbers are too coarse to be useful.
-     */
-    private int speedField(ModularPanel panel, String name, int y, java.util.function.DoubleSupplier getter,
-        java.util.function.DoubleConsumer setter) {
-        panel.child(
-            new TextWidget<>(IKey.str(name)).textAlign(Alignment.CenterLeft)
-                .left(RIGHT_X)
-                .width(50)
-                .top(y)
-                .height(16));
-
-        panel.child(
-            new TextFieldWidget().value(new DoubleValue.Dynamic(getter, setter))
-                .numbersDouble(0.1D, 1000.0D)
-                .size(COLUMN_WIDTH - 54, 16)
-                .left(RIGHT_X + 54)
-                .top(y));
-
-        return y + 20;
+    private static TextWidget<?> fieldLabel(String langKey, int y) {
+        return new TextWidget<>(IKey.lang(langKey)).textAlign(Alignment.CenterLeft)
+            .left(RIGHT_X)
+            .width(50)
+            .top(y)
+            .height(16);
     }
 
-    private static TextWidget<?> label(String text, int x, int y) {
-        return new TextWidget<>(IKey.str(text)).textAlign(Alignment.CenterLeft)
+    // a slow drift is often under one block per second, so the field takes decimals
+    private static TextFieldWidget speedField(int y, DoubleSupplier getter, DoubleConsumer setter) {
+        return new TextFieldWidget().value(new DoubleValue.Dynamic(getter, setter))
+            .numbersDouble(0.1D, 1000.0D)
+            .size(COLUMN_WIDTH - 54, 16)
+            .left(RIGHT_X + 54)
+            .top(y);
+    }
+
+    private static TextWidget<?> label(String langKey, int x, int y) {
+        return new TextWidget<>(IKey.lang(langKey)).textAlign(Alignment.CenterLeft)
             .left(x)
             .width(COLUMN_WIDTH)
             .top(y)
             .height(14);
     }
 
-    private static TextWidget<?> dynamicLabel(java.util.function.Supplier<String> text, int x, int y) {
-        return new TextWidget<>(IKey.dynamic(text::get)).textAlign(Alignment.CenterLeft)
-            .left(x)
+    private static TextWidget<?> dynamicLabel(Supplier<String> langKey, Supplier<Object[]> formatValues, int y) {
+        return new TextWidget<>(IKey.lang(langKey, formatValues)).textAlign(Alignment.CenterLeft)
+            .left(LEFT_X)
             .width(COLUMN_WIDTH)
             .top(y)
             .height(12);
     }
 
-    /**
-     * Picking the material off the hotbar avoids needing a block picker widget, and matches how
-     * people already choose what to build with.
-     */
     private static void takeHeldBlock(BrushSettings settings) {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.thePlayer == null) return;
@@ -445,16 +404,18 @@ public class SculptorPanel extends CustomModularScreen {
         if (held == null) return;
 
         Block block = Block.getBlockFromItem(held.getItem());
-        if (block == null || block == net.minecraft.init.Blocks.air) return;
+        if (block == null || block == Blocks.air) return;
 
         settings.setMaterial(Block.getIdFromBlock(block), held.getItemDamage() & 0xF);
     }
 
-    private static String materialName(BrushSettings settings) {
-        Block block = Block.getBlockById(settings.getMaterialId());
-        if (block == null) return "unknown";
-        String name = block.getLocalizedName();
-        return (settings.getMaterialData() != 0) ? name + ":" + settings.getMaterialData() : name;
+    private static String readMaterialName(BrushSettings settings) {
+        final Block block = Block.getBlockById(settings.getMaterialId());
+        if (block == null) return StatCollector.translateToLocal("sculptor.panel.material.unknown");
+        return (settings.getMaterialData() != 0) ? StatCollector.translateToLocalFormatted(
+            "sculptor.panel.material.with_data",
+            block.getLocalizedName(),
+            settings.getMaterialData()) : block.getLocalizedName();
     }
 
 }

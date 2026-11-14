@@ -1,18 +1,3 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.edit;
 
 import static org.junit.Assert.assertEquals;
@@ -26,6 +11,7 @@ import com.sk89q.worldedit.Vector;
 import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.blocks.BlockID;
 
+/** The read-your-writes buffer of a preview: reads, overwrites, copies, bounds and the read-only map view. */
 public class PreviewBufferTest {
 
     private PreviewBuffer buffer;
@@ -52,13 +38,12 @@ public class PreviewBufferTest {
     }
 
     /**
-     * Patterns hand back the same mutable BaseBlock on every call. A buffer retains what it is
-     * given, so without a defensive copy every entry would alias one object and report whatever
-     * was written last.
+     * A pattern returns the same mutable {@link BaseBlock} on each call. Without a copy in the buffer, each entry is
+     * the one object, with the last write.
      */
     @Test
     public void doesNotAliasAReusedBlockInstance() {
-        BaseBlock reused = new BaseBlock(BlockID.STONE);
+        final BaseBlock reused = new BaseBlock(BlockID.STONE);
 
         buffer.put(new Vector(0, 0, 0), reused);
         reused.setIdAndData(BlockID.DIRT, 0);
@@ -76,7 +61,7 @@ public class PreviewBufferTest {
 
     @Test
     public void overwritingAPositionKeepsOneEntry() {
-        Vector pos = new Vector(1, 1, 1);
+        final Vector pos = new Vector(1, 1, 1);
         buffer.put(pos, new BaseBlock(BlockID.STONE));
         buffer.put(pos, new BaseBlock(BlockID.DIRT));
 

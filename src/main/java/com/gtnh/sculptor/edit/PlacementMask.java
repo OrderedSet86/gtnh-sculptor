@@ -1,41 +1,23 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.edit;
+
+import java.util.Locale;
 
 import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.blocks.BlockID;
 
 /**
- * What a brush is allowed to write over.
+ * The blocks that a brush may write over. {@link SculptorEditContext#setBlock} applies the mask, so the preview and the
+ * commit apply the mask with the same code.
  *
  * <p>
- * Applied inside {@link SculptorEditContext#setBlock}, so it constrains preview and commit
- * identically and by the same code -- there is no way for the ghost to show a block the commit
- * would then refuse to place.
- * </p>
- *
- * <p>
- * Note this is not WorldEdit's {@code -a} switch, despite sounding like it. That one is a
- * <em>source</em> mask meaning "skip air in the clipboard"; this constrains the destination.
+ * The {@code -a} flag of WorldEdit is a different thing: the flag skips the air of the source clipboard. This mask
+ * applies to the destination.
  * </p>
  */
 public enum PlacementMask {
 
-    /** Replace whatever is there. */
-    OVERWRITE("Overwrite anything") {
+    /** Write over any block. */
+    OVERWRITE {
 
         @Override
         public boolean allows(BaseBlock existing, BaseBlock material) {
@@ -48,8 +30,8 @@ public enum PlacementMask {
         }
     },
 
-    /** Build into empty space only, leaving existing terrain and structures untouched. */
-    AIR_ONLY("Air only") {
+    /** Write over air only, so the terrain and builds stay as they are. */
+    AIR_ONLY {
 
         @Override
         public boolean allows(BaseBlock existing, BaseBlock material) {
@@ -58,14 +40,10 @@ public enum PlacementMask {
     },
 
     /**
-     * Only overwrite blocks that already match the brush material.
-     *
-     * <p>
-     * Useful for reshaping something you previously placed without disturbing anything it was
-     * built against. Data value is compared too, so coloured or rotated variants stay distinct.
-     * </p>
+     * Write over a block of the brush material only, to reshape a placed build without a change to the blocks around
+     * the build. The data value must match too, so a colour or a rotation of the block is a different block.
      */
-    REPLACE_MATERIAL("Replace selected only") {
+    REPLACE_MATERIAL {
 
         @Override
         public boolean allows(BaseBlock existing, BaseBlock material) {
@@ -74,38 +52,26 @@ public enum PlacementMask {
         }
     };
 
-    private final String label;
-
-    PlacementMask(String label) {
-        this.label = label;
-    }
-
-    public String label() {
-        return label;
-    }
-
     /**
-     * @param existing the block currently at the target position, or null if unknown
-     * @param material the brush's chosen material
+     * Report whether the mask allows a write over {@code existing}, with the brush material {@code material}.
+     * {@code existing} is {@code null} when unknown.
      */
     public abstract boolean allows(BaseBlock existing, BaseBlock material);
 
     /**
-     * Whether {@link #allows} actually looks at what is in the way.
-     *
-     * <p>
-     * Reading the existing block costs three chunk lookups, a registry probe, a tile-entity
-     * lookup and an allocation, and Java evaluates the argument whether or not the mask wants it.
-     * The default mask discards it, so a brush placing tens of thousands of blocks was paying all
-     * of that for every one of them and throwing the answer away.
-     * </p>
+     * Report whether {@link #allows} reads {@code existing}. A read of the existing block costs three chunk lookups, a
+     * registry lookup, a tile entity lookup and an allocation, and a stroke writes tens of thousands of blocks.
      */
     public boolean inspectsExisting() {
         return true;
     }
 
+    public String getLangKey() {
+        return "sculptor.mask." + name().toLowerCase(Locale.ROOT);
+    }
+
     public PlacementMask next() {
-        PlacementMask[] all = values();
+        final PlacementMask[] all = values();
         return all[(ordinal() + 1) % all.length];
     }
 

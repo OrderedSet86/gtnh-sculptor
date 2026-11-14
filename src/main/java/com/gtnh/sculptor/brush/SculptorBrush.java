@@ -1,19 +1,6 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.brush;
+
+import java.util.Locale;
 
 import com.gtnh.sculptor.edit.PlacementMask;
 import com.gtnh.sculptor.edit.SculptorEditContext;
@@ -21,74 +8,268 @@ import com.sk89q.worldedit.MaxChangedBlocksException;
 import com.sk89q.worldedit.Vector;
 
 /**
- * The brushes Sculptor offers, and the single place that says what each one does.
- *
- * <p>
- * Preview and commit both dispatch through {@link #apply}, so there is no way for the ghost to
- * disagree with the result: they are the same call against a context backed differently.
- * </p>
+ * The brushes of Sculptor. The preview and the commit both run a brush through {@link #apply}, with a context of each
+ * kind, so the ghost and the committed result come from the same call.
  */
 public enum SculptorBrush {
 
-    SPHERE("Sphere", null, 0, 0, false, true),
-    HOLLOW_SPHERE("Hollow sphere", null, 0, 0, false, true),
-    CYLINDER("Cylinder", "Height", 1, 32, false, true),
-    HOLLOW_CYLINDER("Hollow cylinder", "Height", 1, 32, false, true),
-    SMOOTH("Smooth", "Iterations", 1, 8, true, false),
-    GRAVITY("Gravity", null, 0, 0, false, false),
-    RAISE("Raise", null, 0, 0, true, true),
-    LOWER("Lower", null, 0, 0, true, true),
-    FLATTEN("Flatten", null, 0, 0, true, true),
-    ERODE("Erode", null, 0, 0, true, false),
-    MELT("Melt", null, 0, 0, true, false),
-    TREE("Plant trees", null, 0, 0, true, false),
-    REMOVE_FOLIAGE("Remove foliage", null, 0, 0, false, false);
+    SPHERE(SecondaryParameter.NONE, false, true) {
 
-    private final String label;
-    private final String secondaryLabel;
-    private final int secondaryMin;
-    private final int secondaryMax;
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.sphere(false);
+        }
+    },
+    HOLLOW_SPHERE(SecondaryParameter.NONE, false, true) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.sphere(true);
+        }
+    },
+    CYLINDER(SecondaryParameter.HEIGHT, false, true) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.cylinder(false);
+        }
+    },
+    HOLLOW_CYLINDER(SecondaryParameter.HEIGHT, false, true) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.cylinder(true);
+        }
+    },
+    SMOOTH(SecondaryParameter.ITERATIONS, true, false) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.smooth(
+                stroke.getParams()
+                    .secondary(),
+                SmoothingBounds.UNBOUNDED);
+        }
+    },
+    GRAVITY(SecondaryParameter.NONE, false, false) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.gravity();
+        }
+    },
+    RAISE(SecondaryParameter.NONE, true, true) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.raiseLower(1);
+        }
+    },
+    LOWER(SecondaryParameter.NONE, true, true) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.raiseLower(-1);
+        }
+    },
+    FLATTEN(SecondaryParameter.NONE, true, true) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.flatten();
+        }
+    },
+    ERODE(SecondaryParameter.NONE, true, false) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.erode(false);
+        }
+    },
+    MELT(SecondaryParameter.NONE, true, false) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.erode(true);
+        }
+    },
+    TREE(SecondaryParameter.NONE, true, false) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.plantTrees();
+        }
+    },
+    REMOVE_FOLIAGE(SecondaryParameter.NONE, false, false) {
+
+        @Override
+        public void place(BrushStroke stroke) throws MaxChangedBlocksException {
+            stroke.removeFoliage();
+        }
+    };
+
+    private final SecondaryParameter secondary;
     private final boolean usesStrength;
 
-    /**
-     * Whether the optional smoothing pass runs after this brush.
-     *
-     * <p>
-     * True for anything that reshapes ground the height map can see. Not for smooth itself,
-     * which would be circular, nor for gravity, erode, melt or foliage removal, whose whole
-     * point is detail that smoothing would immediately undo.
-     * </p>
-     */
+    // the auto-smooth pass runs after a brush that changes the height of the ground. Not after smooth, and not after
+    // gravity, erode, melt, trees or foliage removal, whose detail the pass would undo
     private final boolean autoSmoothable;
 
-    SculptorBrush(String label, String secondaryLabel, int secondaryMin, int secondaryMax, boolean usesStrength,
-        boolean autoSmoothable) {
-        this.label = label;
-        this.secondaryLabel = secondaryLabel;
-        this.secondaryMin = secondaryMin;
-        this.secondaryMax = secondaryMax;
+    SculptorBrush(SecondaryParameter secondary, boolean usesStrength, boolean autoSmoothable) {
+        this.secondary = secondary;
         this.usesStrength = usesStrength;
         this.autoSmoothable = autoSmoothable;
     }
 
-    public String label() {
-        return label;
+    /**
+     * Run the brush, then the auto-smooth pass when the brush is {@link #isAutoSmoothable auto-smoothable} and the
+     * auto-smooth setting is above 0.
+     *
+     * @param ctx    a preview or a commit context. The brush runs the same code for both
+     * @param centre the block at the crosshair
+     */
+    public void apply(SculptorEditContext ctx, Vector centre, BrushParams params) throws MaxChangedBlocksException {
+        ctx.setMaterial(params.material());
+        final BrushStroke stroke = new BrushStroke(ctx, centre, params);
+        if (!(autoSmoothable && params.autoSmooth() > 0.0D)) {
+            place(stroke);
+            return;
+        }
+
+        // under a mask other than OVERWRITE, the pass may remove the material of this stroke only
+        final boolean guardRemovals = ctx.getPlacementMask() != PlacementMask.OVERWRITE;
+        if (guardRemovals) ctx.trackWrites();
+
+        // the smoothing disc reaches past the brush, to blend the seam between the shape and the terrain around the
+        // shape. Sample the ground before the placement. After the placement, the material of the stroke and the ground
+        // are one solid run
+        final int reach = params.radius() + Math.max(3, params.radius() / 2);
+        final ColumnGrid groundBefore = stroke.sampleHeights(reach);
+
+        place(stroke);
+
+        final boolean cantilever = fillsDownToGround() && params.overhang() == OverhangMode.CANTILEVER;
+        final ShapeProfile shape = cantilever ? computeShapeProfile(centre, params) : null;
+        if (cantilever) {
+            // the fraction of the thickness of a column that the underside may drop. A cylinder has a flat underside to
+            // round off. A sphere is round below already, and a drop of the full thickness of a column hangs a teardrop
+            final double depthFactor = (this == CYLINDER) ? 1.0D : 0.5D;
+            stroke.cantileverOntoGround(groundBefore, shape, depthFactor);
+        } else if (fillsDownToGround()) {
+            stroke.settleOntoGround(groundBefore);
+        }
+
+        // the limit on a raise, and on a cut below the ground before the stroke. A cut of the material of the stroke is
+        // the taper, with no limit
+        final int maxStep = Math.max(2, (int) Math.round(params.autoSmooth() * params.radius() / 3.0D));
+
+        // with a cantilever, the smoothing pass skips the columns of the shape. A pass over the top face moves each
+        // column toward the terrain beside the column, and makes the flat face lumpy. With settle, the taper into the
+        // terrain is the goal of the pass
+        final SmoothingBounds bounds = new SmoothingBounds(
+            maxStep,
+            groundBefore,
+            cantilever,
+            cantilever ? computeBlendFloor(shape, maxStep) : ColumnGrid.NONE);
+
+        // one pass moves a column beside a two-block step by well under half a block, which rounds to nothing. The
+        // blend reaches past the brush only after several passes
+        final int passes = Math.max(2, (int) Math.round(params.autoSmooth() * 6.0D));
+        final BrushParams smoothing = params.toBuilder()
+            .radius(reach)
+            .strength(params.autoSmooth())
+            .autoSmooth(0.0D)
+            .build();
+
+        if (guardRemovals) ctx.setGuardRemovals(true);
+        try {
+            new BrushStroke(ctx, centre, smoothing).smooth(passes, bounds);
+        } finally {
+            if (guardRemovals) ctx.setGuardRemovals(false);
+        }
+    }
+
+    public abstract void place(BrushStroke stroke) throws MaxChangedBlocksException;
+
+    /**
+     * Report whether the shape fills down to the ground, or curves the underside down, when auto-smooth is on: true for
+     * the solid shapes. Filled at the base, a hollow shape is not hollow. With auto-smooth at 0, no shape changes, for
+     * building in the air.
+     */
+    private boolean fillsDownToGround() {
+        return this == SPHERE || this == CYLINDER;
+    }
+
+    /**
+     * Compute where the material of this brush starts and ends in each column of the footprint, from the brush and not
+     * from the world.
+     *
+     * <p>
+     * In the world, a shape placed into a cliff, under a ledge or down a crevice joins the terrain, and the solid run
+     * of a column is then the run of the terrain. With a run read from the world, the thickness would be wrong, or a
+     * cylinder cut into a rock face would get no underside.
+     * </p>
+     */
+    private ShapeProfile computeShapeProfile(Vector centre, BrushParams params) {
+        final int r = params.radius();
+        final int cy = centre.getBlockY();
+        final double rSq = (r + 0.5D) * (r + 0.5D);
+        final ColumnGrid bottom = new ColumnGrid(r);
+        final ColumnGrid top = new ColumnGrid(r);
+
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                final double dSq = dx * dx + (double) dz * dz;
+                if (dSq > rSq) continue;
+
+                if (this == CYLINDER) {
+                    bottom.set(dx, dz, cy);
+                    top.set(dx, dz, cy + Math.max(1, params.secondary()) - 1);
+                } else {
+                    final int half = (int) Math.floor(Math.sqrt(rSq - dSq));
+                    bottom.set(dx, dz, cy - half);
+                    top.set(dx, dz, cy + half);
+                }
+            }
+        }
+        return new ShapeProfile(bottom, top);
+    }
+
+    // the lowest Y of a seam: the lowest bottom of the shape, less the greatest thickness of the shape and less
+    // maxStep. Ground further down is in the disc but is not a seam
+    private static int computeBlendFloor(ShapeProfile shape, int maxStep) {
+        final ColumnGrid bottoms = shape.bottom();
+        final ColumnGrid tops = shape.top();
+        int lowest = Integer.MAX_VALUE;
+        int thickest = 1;
+        for (int index = 0; index < bottoms.getCellCount(); index++) {
+            final int bottom = bottoms.getAt(index);
+            if (bottom == ColumnGrid.NONE) continue;
+            lowest = Math.min(lowest, bottom);
+            thickest = Math.max(thickest, tops.getAt(index) - bottom + 1);
+        }
+        return (lowest == Integer.MAX_VALUE) ? ColumnGrid.NONE : lowest - thickest - maxStep;
+    }
+
+    public String getLangKey() {
+        return "sculptor.brush." + name().toLowerCase(Locale.ROOT);
     }
 
     public boolean hasSecondary() {
-        return secondaryLabel != null;
+        return secondary != SecondaryParameter.NONE;
     }
 
-    public String secondaryLabel() {
-        return secondaryLabel;
+    /** The lang key of the second parameter, such as the height of a cylinder. */
+    public String getSecondaryLangKey() {
+        return secondary.langKey;
     }
 
-    public int secondaryMin() {
-        return secondaryMin;
+    public int getSecondaryMin() {
+        return secondary.min;
     }
 
-    public int secondaryMax() {
-        return secondaryMax;
+    public int getSecondaryMax() {
+        return secondary.max;
     }
 
     public boolean usesStrength() {
@@ -99,225 +280,31 @@ public enum SculptorBrush {
         return autoSmoothable;
     }
 
-    /**
-     * Run this brush.
-     *
-     * @param ctx    preview or commit backing -- the brush does not know which
-     * @param centre where the crosshair is pointing
-     */
-    public void apply(SculptorEditContext ctx, Vector centre, BrushParams params) throws MaxChangedBlocksException {
-        ctx.setMaterial(params.material);
-
-        // The auto-smooth pass has to be able to tell its own new material from the ground it
-        // was dropped into, so a restrictive mask can stop it cutting into the latter. Only
-        // worth the bookkeeping when that pass will actually run under such a mask.
-        boolean guardAutoSmooth = autoSmoothable && params.autoSmooth > 0.0D
-            && ctx.getPlacementMask() != PlacementMask.OVERWRITE;
-        if (guardAutoSmooth) ctx.trackWrites();
-
-        // Reaches well past the brush so the new shape is blended into the ground around it.
-        // Smoothing only the footprint would round the thing off in isolation and leave the seam
-        // where it meets untouched terrain, which is the opposite of the point.
-        int reach = params.radius + Math.max(3, params.radius / 2);
-
-        // Sampled before anything is placed, because afterwards there is no way to tell the
-        // stroke's new material from the ground it is standing on -- and that distinction is what
-        // lets the pass shave a shape back to ground level without also digging into the ground.
-        // An int per column of the smoothing disc, so this costs a few thousand entries.
-        int[] groundBefore = (autoSmoothable && params.autoSmooth > 0.0D)
-            ? Brushes.sampleHeights(ctx, centre.getBlockX(), centre.getBlockY(), centre.getBlockZ(), reach)
-            : null;
-
-        switch (this) {
-            case SPHERE:
-                Brushes.sphere(ctx, centre, params, false);
-                break;
-            case HOLLOW_SPHERE:
-                Brushes.sphere(ctx, centre, params, true);
-                break;
-            case CYLINDER:
-                Brushes.cylinder(ctx, centre, params, false);
-                break;
-            case HOLLOW_CYLINDER:
-                Brushes.cylinder(ctx, centre, params, true);
-                break;
-            case SMOOTH:
-                Brushes.smooth(ctx, centre, params, params.secondary);
-                break;
-            case GRAVITY:
-                Brushes.gravity(ctx, centre, params);
-                break;
-            case RAISE:
-                Brushes.raiseLower(ctx, centre, params, 1);
-                break;
-            case LOWER:
-                Brushes.raiseLower(ctx, centre, params, -1);
-                break;
-            case FLATTEN:
-                Brushes.flatten(ctx, centre, params);
-                break;
-            case ERODE:
-                Brushes.erode(ctx, centre, params, false);
-                break;
-            case MELT:
-                Brushes.erode(ctx, centre, params, true);
-                break;
-            case TREE:
-                Brushes.plantTrees(ctx, centre, params);
-                break;
-            case REMOVE_FOLIAGE:
-                Brushes.removeFoliage(ctx, centre, params);
-                break;
-            default:
-                break;
-        }
-
-        // Diffusion has to travel. A single pass shifts a column next to a two-block step by
-        // well under half a block, which rounds away to nothing, so the blend only reaches past
-        // the brush once enough passes have spread it -- more of them the stronger the setting.
-        int passes = Math.max(2, (int) Math.round(params.autoSmooth * 6.0D));
-
-        // Before smoothing, so the height map sees a shape that is standing on something rather
-        // than one hanging in the air.
-        boolean cantilever = fillsDownToGround() && params.autoSmooth > 0.0D
-            && params.overhang == OverhangMode.CANTILEVER;
-
-        int width = 2 * params.radius + 1;
-        int[] shapeBottom = cantilever ? new int[width * width] : null;
-        int[] shapeTop = cantilever ? new int[width * width] : null;
-        if (cantilever) shapeProfile(centre, params, shapeBottom, shapeTop);
-
-        if (fillsDownToGround() && params.autoSmooth > 0.0D) {
-            if (cantilever) {
-                // How much of a column's own thickness the underside may fall through. A cylinder
-                // has a flat soffit to round off and can use the lot; a sphere is already curved
-                // underneath, and letting it drop by its full thickness hangs a teardrop rather
-                // than blending into anything, so it gets half.
-                double depthFactor = (this == CYLINDER) ? 1.0D : 0.5D;
-                Brushes
-                    .cantileverOntoGround(ctx, centre, params, groundBefore, reach, shapeBottom, shapeTop, depthFactor);
-            } else {
-                Brushes.settleOntoGround(ctx, centre, params, groundBefore, reach);
-            }
-        }
-
-        if (autoSmoothable && params.autoSmooth > 0.0D) {
-            // Runs through the same context, so in commit mode it lands in the same undo entry
-            // and in preview mode the ghost already shows the smoothed result.
-            BrushParams smoothing = new BrushParams(
-                reach,
-                params.material,
-                params.secondary,
-                params.autoSmooth,
-                0.0D,
-                params.useSelectedMaterial);
-
-            // The leash on reshaping terrain the player did not aim at: how far a column may be
-            // raised, and how far below the ground it stood on it may be cut. Shaving the stroke's
-            // own material back down is not bounded by this -- that is the taper, and a shape
-            // standing proud of a slope has to be able to follow it all the way to the ground.
-            int maxStep = Math.max(2, (int) Math.round(params.autoSmooth * params.radius / 3.0D));
-
-            // "Air only" means leave what is already there alone, and the player did not ask for
-            // this pass -- so here, unlike in a brush they chose, the mask governs cutting as
-            // well as building. Undoing what the stroke just placed is still allowed.
-            if (guardAutoSmooth) ctx.setGuardRemovals(true);
-            try {
-                // The cantilever keeps the shape it was drawn with -- its underside has already
-                // been dealt with, and reworking the top as well is what turned a flat face into
-                // an island of lumps. Filling to ground has no such face to preserve: there the
-                // taper down to the surrounding terrain is the whole point.
-                boolean keepPlacement = params.overhang == OverhangMode.CANTILEVER && fillsDownToGround();
-                // Where the seam can plausibly be: no lower than the shape's own underside, less
-                // its thickness again and the leash. Ground further down than that is not being
-                // blended into anything, it is just in the same disc.
-                int blendFloor = Integer.MIN_VALUE;
-                if (keepPlacement && shapeBottom != null) {
-                    int lowest = Integer.MAX_VALUE;
-                    int thickest = 1;
-                    for (int i = 0; i < shapeBottom.length; i++) {
-                        if (shapeBottom[i] == Integer.MIN_VALUE) continue;
-                        lowest = Math.min(lowest, shapeBottom[i]);
-                        thickest = Math.max(thickest, shapeTop[i] - shapeBottom[i] + 1);
-                    }
-                    if (lowest != Integer.MAX_VALUE) blendFloor = lowest - thickest - maxStep;
-                }
-
-                Brushes.smooth(ctx, centre, smoothing, passes, maxStep, groundBefore, keepPlacement, blendFloor);
-            } finally {
-                if (guardAutoSmooth) ctx.setGuardRemovals(false);
-            }
-        }
-    }
-
-    /**
-     * Where this brush's own material starts and ends in every column of its footprint, with
-     * {@link Integer#MIN_VALUE} outside it.
-     *
-     * <p>
-     * The cantilever used to work this out by looking at the world afterwards -- find the top of
-     * the column, walk down to the bottom of the solid run. That reads correctly only where the
-     * shape happens to hang in clear air. Placed into a cliff, under a ledge or down a crevice it
-     * merges with what is already there, and the run is then the cliff's, not the shape's: the
-     * pass either measured the wrong thickness or gave up on the column entirely, which is why a
-     * cylinder cut into a rock face got no underside at all. The brush knows where it put its
-     * blocks. Asking it removes the guesswork and every special case built around it.
-     * </p>
-     */
-    private void shapeProfile(Vector centre, BrushParams params, int[] bottom, int[] top) {
-        int r = params.radius;
-        int width = 2 * r + 1;
-        int cy = centre.getBlockY();
-        double rSq = (r + 0.5D) * (r + 0.5D);
-
-        for (int dx = -r; dx <= r; dx++) {
-            for (int dz = -r; dz <= r; dz++) {
-                int index = (dz + r) * width + (dx + r);
-                double dSq = dx * dx + (double) dz * dz;
-                if (dSq > rSq) {
-                    bottom[index] = Integer.MIN_VALUE;
-                    continue;
-                }
-
-                if (this == CYLINDER) {
-                    bottom[index] = cy;
-                    top[index] = cy + Math.max(1, params.secondary) - 1;
-                } else {
-                    int half = (int) Math.floor(Math.sqrt(rSq - dSq));
-                    bottom[index] = cy - half;
-                    top[index] = cy + half;
-                }
-            }
-        }
-    }
-
-    /**
-     * Whether this shape should be extended down to the ground when auto-smooth is on.
-     *
-     * <p>
-     * The solid shapes only. A hollow one filled at the base is no longer hollow. And it is tied
-     * to auto-smooth deliberately: with the slider at zero a cylinder is a cylinder, base hanging
-     * in the air and all, which is what you want when building rather than sculpting terrain.
-     * </p>
-     */
-    private boolean fillsDownToGround() {
-        return this == SPHERE || this == CYLINDER;
-    }
-
     public SculptorBrush next() {
-        SculptorBrush[] all = values();
+        final SculptorBrush[] all = values();
         return all[(ordinal() + 1) % all.length];
     }
 
     public SculptorBrush previous() {
-        SculptorBrush[] all = values();
+        final SculptorBrush[] all = values();
         return all[(ordinal() + all.length - 1) % all.length];
     }
 
-    /** Resolve from a wire ordinal, defaulting rather than throwing on a bad value. */
-    public static SculptorBrush fromOrdinal(int ordinal) {
-        SculptorBrush[] all = values();
-        return (ordinal >= 0 && ordinal < all.length) ? all[ordinal] : SPHERE;
-    }
+    /** The meaning and the range of the second parameter of a brush. */
+    private enum SecondaryParameter {
 
+        NONE("sculptor.panel.secondary.unused", 0, 0),
+        HEIGHT("sculptor.brush.secondary.height", 1, 32),
+        ITERATIONS("sculptor.brush.secondary.iterations", 1, 8);
+
+        private final String langKey;
+        private final int min;
+        private final int max;
+
+        SecondaryParameter(String langKey, int min, int max) {
+            this.langKey = langKey;
+            this.min = min;
+            this.max = max;
+        }
+    }
 }

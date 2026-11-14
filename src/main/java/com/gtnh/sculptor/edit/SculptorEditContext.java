@@ -1,18 +1,3 @@
-/*
- * Sculptor, an interactive creative world editor for Minecraft 1.7.10
- * Copyright (C) Sculptor contributors
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
- * for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 package com.gtnh.sculptor.edit;
 
 import java.util.Collections;
@@ -29,42 +14,33 @@ import com.sk89q.worldedit.blocks.BlockID;
 import com.sk89q.worldedit.world.World;
 
 /**
- * The single surface every Sculptor brush reads and writes through.
+ * The only way a Sculptor brush reads and writes blocks.
  *
  * <p>
- * A brush does not know whether it is previewing or committing. In preview mode the context
- * holds a {@link PreviewBuffer} and nothing reaches the world; in commit mode it wraps a real
- * {@link EditSession}. Same brush code, same call, two backings -- so the ghost and the result
- * cannot disagree, because they are produced by the same execution.
+ * A preview context writes to a {@link PreviewBuffer} and never changes the world. A commit context writes through an
+ * {@link EditSession}. A brush runs the same code against both, so the ghost and the committed result come from one
+ * execution.
  * </p>
  *
  * <p>
- * This exists as a class we own rather than as a patch to {@code EditSession} because Sculptor
- * is an addon: WorldEdit ships as its own mod and cannot be modified. That turns out to be the
- * better design anyway. {@code EditSession.getBlock}, {@code getBlockType} and
- * {@code getBlockData} all bypass its own extent chain and read the world directly, so a
- * capture inserted into that chain is invisible to them -- which is exactly why height-map
- * brushes previewed incorrectly under the old approach. Owning both sides of the read closes
- * that off by construction.
+ * {@code EditSession.getBlock()}, {@code getBlockType()} and {@code getBlockData()} read the world directly, past the
+ * extent chain of the session. A capture in the extent chain is therefore invisible to those reads. Every read of a
+ * brush goes through {@link #getBlock}, which reads the buffer first.
  * </p>
  */
 public class SculptorEditContext {
 
     private static final BaseBlock AIR = new BaseBlock(BlockID.AIR);
 
-    /** Non-null when committing. */
+    // exactly one of `session` and `buffer` is set
     private final EditSession session;
-
-    /** The world to read through for positions no brush has touched. */
     private final World world;
-
-    /** Non-null when previewing. */
     private final PreviewBuffer buffer;
 
     private PlacementMask placementMask = PlacementMask.OVERWRITE;
     private BaseBlock material = AIR;
 
-    /** Positions this stroke has written, or null when nobody asked to keep track. */
+    // null until trackWrites()
     private Set<BlockVector> written;
     private boolean guardRemovals;
 
@@ -76,12 +52,12 @@ public class SculptorEditContext {
         this.buffer = buffer;
     }
 
-    /** Capture changes without touching the world. */
+    /** A context that writes to a {@link PreviewBuffer}, and never to the world. */
     public static SculptorEditContext preview(World world) {
         return new SculptorEditContext(null, world, new PreviewBuffer());
     }
 
-    /** Apply changes for real, through the given session. */
+    /** A context that writes through the session to the world. */
     public static SculptorEditContext commit(EditSession session) {
         return new SculptorEditContext(session, session.getWorld(), null);
     }
@@ -103,89 +79,48 @@ public class SculptorEditContext {
     }
 
     /**
-     * Start remembering every position written, so removals can later be told apart from
-     * removals of untouched terrain.
-     *
-     * <p>
-     * Off by default, and switched on only for a stroke that is going to need it -- the set
-     * grows with the volume of the brush, which at the server's maximum radius is millions of
-     * positions.
-     * </p>
+     * Record each position that this context writes from now on. Under {@link #setGuardRemovals}, a removal at a
+     * recorded position is allowed: the block is material of the stroke, not terrain. The set has one entry per written
+     * block, which at the maximum radius of the server is millions of entries, so recording is off until this call.
      */
     public void trackWrites() {
         if (written == null) written = new HashSet<BlockVector>();
     }
 
     /**
-     * Hold removals to the same standard as placements.
+     * Apply the placement mask to a removal too, except at a position that {@link #trackWrites} recorded.
      *
      * <p>
-     * Normally the mask governs only what may be built <em>over</em>: gating removals as well
-     * would mean "air only" silently disabled every brush that carves, since none of them can
-     * write air over a block that is by definition not air.
-     * </p>
-     *
-     * <p>
-     * The auto-smooth pass is the exception, because the player did not ask for it. Cutting into
-     * untouched ground is exactly what "air only" says not to do, so during that pass a removal
-     * has to satisfy the mask too -- unless it is undoing something this same stroke placed,
-     * which was never protected terrain to begin with. Needs {@link #trackWrites()} to have been
-     * on from the start of the stroke.
+     * Without the guard, the mask applies only to a placement. A mask on removals would stop every carving brush under
+     * {@link PlacementMask#AIR_ONLY}, because a removal writes air over a block that is not air. The auto-smooth pass
+     * turns the guard on: the player did not choose that pass, and under "air only" the pass must not cut into the
+     * terrain. Call {@link #trackWrites} at the start of the stroke, so the pass can still remove the material of the
+     * stroke.
      * </p>
      */
     public void setGuardRemovals(boolean guard) {
         this.guardRemovals = guard;
     }
 
-    /** The brush material, needed by {@link PlacementMask#REPLACE_MATERIAL}. */
+    /** Set the brush material, which {@link PlacementMask#REPLACE_MATERIAL} compares against. */
     public void setMaterial(BaseBlock material) {
         this.material = (material != null) ? material : AIR;
     }
 
-    /**
-     * Read the world as it stands including anything written through this context.
-     *
-     * <p>
-     * Never returns null; unknown positions read as air, matching how the rest of WorldEdit
-     * behaves out of bounds.
-     * </p>
-     */
-    public BaseBlock getBlock(Vector position) {
-        if (buffer != null) {
-            BaseBlock pending = buffer.get(position);
-            if (pending != null) return pending;
-        }
-        BaseBlock block = (session != null) ? session.getBlock(position) : world.getBlock(position);
-        return (block != null) ? block : AIR;
+    public boolean setAir(int x, int y, int z) throws MaxChangedBlocksException {
+        return setBlock(new Vector(x, y, z), new BaseBlock(BlockID.AIR));
     }
 
-    public boolean isAir(Vector position) {
-        return getBlock(position).getType() == BlockID.AIR;
-    }
-
-    public boolean isAir(int x, int y, int z) {
-        return isAir(new Vector(x, y, z));
-    }
-
-    /**
-     * Write a block, subject to the placement mask.
-     *
-     * @return true if the block was written, false if the mask rejected it
-     */
+    /** Write a block, and return {@code false} when the placement mask rejects the write. */
     public boolean setBlock(Vector position, BaseBlock block) throws MaxChangedBlocksException {
-        // The mask governs what may be built *over*, so it only applies to placing something.
-        // Gating removals on it too would mean "air only" silently disabled every brush that
-        // carves -- erode, lower, foliage removal -- since none of them can write air over a
-        // block that is by definition not air.
+        // the mask applies to a placement, and to a removal only under setGuardRemovals()
         boolean placing = block.getType() != BlockID.AIR;
 
-        // Only materialised when something is going to look at it. A brush writes tens of
-        // thousands of blocks and toBlockVector allocates every time it is called.
+        // toBlockVector() allocates, and a stroke writes tens of thousands of blocks. Convert only when recording
         BlockVector key = (written != null) ? position.toBlockVector() : null;
         boolean ours = key != null && written.contains(key);
 
-        // inspectsExisting is checked first so the read is skipped under the default mask, which
-        // discards the answer -- see PlacementMask.inspectsExisting.
+        // check inspectsExisting() first. Under OVERWRITE the check skips the read of the existing block
         if ((placing || (guardRemovals && !ours)) && placementMask.inspectsExisting()
             && !placementMask.allows(getBlock(position), material)) {
             return false;
@@ -201,40 +136,33 @@ public class SculptorEditContext {
         return true;
     }
 
-    public boolean setBlock(int x, int y, int z, BaseBlock block) throws MaxChangedBlocksException {
-        return setBlock(new Vector(x, y, z), block);
+    public boolean isAir(int x, int y, int z) {
+        return isAir(new Vector(x, y, z));
     }
 
-    public boolean setAir(int x, int y, int z) throws MaxChangedBlocksException {
-        return setBlock(new Vector(x, y, z), new BaseBlock(BlockID.AIR));
+    public boolean isAir(Vector position) {
+        return getBlock(position).getType() == BlockID.AIR;
+    }
+
+    /** Read a block, with the writes of this context applied. A position with no block reads as air. */
+    public BaseBlock getBlock(Vector position) {
+        if (buffer != null) {
+            BaseBlock pending = buffer.get(position);
+            if (pending != null) return pending;
+        }
+        BaseBlock block = (session != null) ? session.getBlock(position) : world.getBlock(position);
+        return (block != null) ? block : AIR;
     }
 
     /**
-     * Find the highest non-air block in a column.
-     *
-     * <p>
-     * Deliberately not {@code EditSession.getHighestTerrainBlock}: that reads through
-     * {@code getBlockType}, which bypasses everything and sees only the untouched world. This
-     * one reads through the context, so it sees pending changes and previews correctly.
-     * </p>
-     *
-     * @return the surface Y, or {@link Integer#MIN_VALUE} if the column is empty
+     * The writes of a preview context, in the order of the first write to each position, and an empty map for a commit
+     * context.
      */
-    public int surfaceY(int x, int z, int topY, int bottomY) {
-        int from = Math.min(255, topY);
-        int to = Math.max(0, bottomY);
-        for (int y = from; y >= to; y--) {
-            if (!isAir(x, y, z)) return y;
-        }
-        return Integer.MIN_VALUE;
-    }
-
-    /** The changes captured while previewing, in the order they were made. */
     public Map<BlockVector, BaseBlock> getPendingChanges() {
         return (buffer != null) ? buffer.asMap() : Collections.<BlockVector, BaseBlock>emptyMap();
     }
 
-    /** How many writes the mask let through. */
+    /** The number of writes that the placement mask allowed. */
     public int getChangeCount() {
         return changeCount;
     }
