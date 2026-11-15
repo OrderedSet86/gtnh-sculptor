@@ -16,14 +16,16 @@ import com.sk89q.worldedit.blocks.BlockID;
  * @param autoSmooth          from 0 to 1, the strength of the smoothing pass after a placement brush. At 0 the pass
  *                            does not run
  * @param useSelectedMaterial build with {@code material}, not with the block that forms the surface
+ * @param replaceBlock        the block that a brush may write over under the mask {@code REPLACE_BLOCK}
  */
 @Desugar
 public record BrushParams(int radius, BaseBlock material, int secondary, double strength, double autoSmooth,
-    boolean useSelectedMaterial, OverhangMode overhang) {
+    boolean useSelectedMaterial, OverhangMode overhang, BaseBlock replaceBlock) {
 
     public BrushParams {
         Objects.requireNonNull(material, "material");
         Objects.requireNonNull(overhang, "overhang");
+        Objects.requireNonNull(replaceBlock, "replaceBlock");
     }
 
     public static Builder builder() {
@@ -37,10 +39,11 @@ public record BrushParams(int radius, BaseBlock material, int secondary, double 
             .strength(strength)
             .autoSmooth(autoSmooth)
             .useSelectedMaterial(useSelectedMaterial)
-            .overhang(overhang);
+            .overhang(overhang)
+            .replaceBlock(replaceBlock);
     }
 
-    /** A builder that starts from radius 1, stone, no auto-smooth and {@link OverhangMode#SETTLE}. */
+    /** A builder that starts from radius 1, stone, no auto-smooth, {@link OverhangMode#SETTLE} and dirt to replace. */
     public static final class Builder {
 
         private int radius = 1;
@@ -50,6 +53,7 @@ public record BrushParams(int radius, BaseBlock material, int secondary, double 
         private double autoSmooth;
         private boolean useSelectedMaterial;
         private OverhangMode overhang = OverhangMode.SETTLE;
+        private BaseBlock replaceBlock = new BaseBlock(BlockID.DIRT);
 
         private Builder() {}
 
@@ -88,8 +92,21 @@ public record BrushParams(int radius, BaseBlock material, int secondary, double 
             return this;
         }
 
+        public Builder replaceBlock(BaseBlock value) {
+            replaceBlock = value;
+            return this;
+        }
+
         public BrushParams build() {
-            return new BrushParams(radius, material, secondary, strength, autoSmooth, useSelectedMaterial, overhang);
+            return new BrushParams(
+                radius,
+                material,
+                secondary,
+                strength,
+                autoSmooth,
+                useSelectedMaterial,
+                overhang,
+                replaceBlock);
         }
     }
 }

@@ -37,7 +37,7 @@ import com.sk89q.worldedit.regions.Region;
 public class SculptorLayersCommand extends CommandBase {
 
     private static final String PERMISSION_BRUSH = "sculptor.brush";
-    private static final String SPILL_FLAG = "-s";
+    private static final String HEIGHT_VARIATION_FLAG = "-s";
     private static final String USAGE = "sculptor.layers.usage";
 
     @Override
@@ -103,7 +103,7 @@ public class SculptorLayersCommand extends CommandBase {
     }
 
     /**
-     * Parse the layers, with WorldEdit's block parser, and the spill after {@code -s}.
+     * Parse the layers, with WorldEdit's block parser, and the height variation after {@code -s}.
      *
      * @throws CommandException with the lang key of the failure, for a red chat line. With no layer, the exception is a
      *                          {@link WrongUsageException} with the usage
@@ -111,14 +111,14 @@ public class SculptorLayersCommand extends CommandBase {
     private static LayerFill parseFill(String[] args, ForgePlayer player, LocalSession session)
         throws WrongUsageException {
         final List<String> rawLayers = new ArrayList<>();
-        int spill = 0;
+        int heightVariation = 0;
         for (int index = 0; index < args.length; index++) {
-            if (!args[index].equals(SPILL_FLAG)) {
+            if (!args[index].equals(HEIGHT_VARIATION_FLAG)) {
                 rawLayers.add(args[index]);
                 continue;
             }
-            if (index + 1 == args.length) throw new CommandException("sculptor.layers.missing_spill");
-            spill = parseSpill(args[++index]);
+            if (index + 1 == args.length) throw new CommandException("sculptor.layers.missing_height_variation");
+            heightVariation = parseHeightVariation(args[++index]);
         }
         if (rawLayers.isEmpty()) throw new WrongUsageException(USAGE);
 
@@ -135,7 +135,7 @@ public class SculptorLayersCommand extends CommandBase {
                     .parseFromInput(rawBlock, context));
             return new LayerFill(
                 stack,
-                spill,
+                heightVariation,
                 ThreadLocalRandom.current()
                     .nextInt());
         } catch (LayerSyntaxException exception) {
@@ -143,15 +143,18 @@ public class SculptorLayersCommand extends CommandBase {
         }
     }
 
-    private static int parseSpill(String rawSpill) {
-        final int spill;
+    private static int parseHeightVariation(String rawHeightVariation) {
+        final int heightVariation;
         try {
-            spill = Integer.parseInt(rawSpill);
+            heightVariation = Integer.parseInt(rawHeightVariation);
         } catch (NumberFormatException exception) {
-            throw chainCause(new CommandException("sculptor.layers.bad_spill", rawSpill), exception);
+            throw chainCause(
+                new CommandException("sculptor.layers.bad_height_variation", rawHeightVariation),
+                exception);
         }
-        if (spill < 0 || spill > LayerFill.MAX_SPILL) throw new CommandException("sculptor.layers.bad_spill", rawSpill);
-        return spill;
+        if (heightVariation < 0 || heightVariation > LayerFill.MAX_HEIGHT_VARIATION)
+            throw new CommandException("sculptor.layers.bad_height_variation", rawHeightVariation);
+        return heightVariation;
     }
 
     // CommandException has no constructor with a cause

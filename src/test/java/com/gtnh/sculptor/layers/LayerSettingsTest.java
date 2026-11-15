@@ -14,8 +14,8 @@ import com.sk89q.worldedit.blocks.BaseBlock;
 
 /**
  * The rules of {@link LayerSettings}, over rows and edits from a seeded {@link Random} and over the boundary values:
- * one row, {@link LayerSettings#MAX_LAYERS} rows, count 1 and {@link LayerSettings#MAX_COUNT}, data 0 and 15, spill 0
- * and {@link LayerFill#MAX_SPILL}.
+ * one row, {@link LayerSettings#MAX_LAYERS} rows, count 1 and {@link LayerSettings#MAX_COUNT}, data 0 and 15, height
+ * variation 0 and {@link LayerFill#MAX_HEIGHT_VARIATION}.
  */
 public class LayerSettingsTest {
 
@@ -32,9 +32,9 @@ public class LayerSettingsTest {
 
         checkRoundTrip(fillSettings(1, 1, 1, 0));
         checkRoundTrip(fillSettings(LayerSettings.MAX_LAYERS, LayerSettings.MAX_COUNT, MAX_BLOCK_ID, MAX_DATA));
-        final LayerSettings fullSpill = fillSettings(2, 1, 1, 0);
-        fullSpill.setSpill(LayerFill.MAX_SPILL);
-        checkRoundTrip(fullSpill);
+        final LayerSettings fullHeightVariation = fillSettings(2, 1, 1, 0);
+        fullHeightVariation.setHeightVariation(LayerFill.MAX_HEIGHT_VARIATION);
+        checkRoundTrip(fullHeightVariation);
     }
 
     @Test
@@ -44,7 +44,7 @@ public class LayerSettingsTest {
             LayerSettings.MAX_COUNT,
             MAX_BLOCK_ID,
             MAX_DATA);
-        settings.setSpill(LayerFill.MAX_SPILL);
+        settings.setHeightVariation(LayerFill.MAX_HEIGHT_VARIATION);
         final String command = settings.buildCommand();
         assertTrue(command.length() + " characters: " + command, command.length() <= CHAT_LIMIT);
     }
@@ -77,15 +77,15 @@ public class LayerSettingsTest {
         }
     }
 
-    // the command reads the tokens before `-s` as layers, and the token after `-s` as the spill
+    // the command reads the tokens before `-s` as layers, and the token after `-s` as the height variation
     private static void checkRoundTrip(LayerSettings settings) throws LayerSyntaxException {
         final String command = settings.buildCommand();
         final List<String> tokens = new ArrayList<>(Arrays.asList(command.split(" ")));
         assertEquals("/sclayers", tokens.remove(0));
-        int spill = 0;
+        int heightVariation = 0;
         final int flag = tokens.indexOf("-s");
         if (flag >= 0) {
-            spill = Integer.parseInt(tokens.get(flag + 1));
+            heightVariation = Integer.parseInt(tokens.get(flag + 1));
             tokens.subList(flag, tokens.size())
                 .clear();
         }
@@ -96,7 +96,7 @@ public class LayerSettingsTest {
             return new BaseBlock(1);
         });
 
-        assertEquals(command, settings.getSpill(), spill);
+        assertEquals(command, settings.getHeightVariation(), heightVariation);
         assertEquals(
             command,
             settings.getRowCount(),
@@ -122,11 +122,11 @@ public class LayerSettingsTest {
             settings.setBlock(index, random.nextInt(MAX_BLOCK_ID + 1), random.nextInt(MAX_DATA + 1));
         }
         if (random.nextBoolean()) settings.toggleRest(random.nextInt(settings.getRowCount()));
-        settings.setSpill(random.nextInt(LayerFill.MAX_SPILL + 1));
+        settings.setHeightVariation(random.nextInt(LayerFill.MAX_HEIGHT_VARIATION + 1));
         return settings;
     }
 
-    // `rowCount` rows of the same block and count, with no rest row and no spill
+    // `rowCount` rows of the same block and count, with no rest row and no height variation
     private static LayerSettings fillSettings(int rowCount, int count, int blockId, int blockData) {
         final LayerSettings settings = new LayerSettings();
         while (settings.getRowCount() < rowCount) settings.addRow();

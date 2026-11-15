@@ -46,6 +46,7 @@ import com.gtnh.sculptor.camera.CameraPathStore;
 import com.gtnh.sculptor.camera.CameraSettings;
 import com.gtnh.sculptor.camera.CameraSettings.PathSpeed;
 import com.gtnh.sculptor.camera.SculptorCameraController;
+import com.gtnh.sculptor.edit.PlacementMask;
 import com.gtnh.sculptor.layers.LayerFill;
 import com.gtnh.sculptor.layers.LayerSettings;
 
@@ -62,9 +63,9 @@ import com.gtnh.sculptor.layers.LayerSettings;
 public class SculptorPanel extends CustomModularScreen {
 
     // the tabs stand TAB_HEIGHT above the panel. At GUI scale 2 on an 854 by 480 window the screen is 240 high, and the
-    // tabs and the panel together are 208 high
+    // tabs and the panel together are 220 high
     private static final int PANEL_WIDTH = 200;
-    private static final int PANEL_HEIGHT = 180;
+    private static final int PANEL_HEIGHT = 192;
     private static final int TAB_HEIGHT = 28;
     private static final int PAGE_PADDING = 6;
     private static final int ROW_GAP = 3;
@@ -73,6 +74,8 @@ public class SculptorPanel extends CustomModularScreen {
     private static final int LABEL_WIDTH = 92;
     private static final int SLOT_SIZE = 18;
     private static final int REST_TOGGLE_WIDTH = 26;
+    private static final int USE_HELD_WIDTH = 80;
+    private static final int HEIGHT_VARIATION_WIDTH = 110;
 
     // the panel is a new screen on each open. The open tab, the layer rows and the result of the last path save or load
     // stay for the next open
@@ -198,27 +201,7 @@ public class SculptorPanel extends CustomModularScreen {
                         row -> settings.getBrush()
                             .usesStrength()));
 
-        final BlockView material = new BlockView(settings::getMaterialId, settings::getMaterialData);
-        page.child(
-            Flow.row()
-                .widthRel(1.0F)
-                .height(SLOT_SIZE)
-                .childPadding(ROW_GAP)
-                .child(
-                    material.createSlot()
-                        .size(SLOT_SIZE))
-                .child(
-                    new TextWidget<>(material.createName()).textAlign(Alignment.CenterLeft)
-                        .expanded()
-                        .heightRel(1.0F))
-                .child(
-                    new ButtonWidget<>().overlay(IKey.lang("sculptor.panel.use_held_block"))
-                        .width(80)
-                        .heightRel(1.0F)
-                        .onMousePressed(button -> {
-                            takeHeldBlock(settings::setMaterial);
-                            return true;
-                        })));
+        page.child(blockRow(new BlockView(settings::getMaterialId, settings::getMaterialData), settings::setMaterial));
 
         page.child(
             cycleButton(
@@ -227,6 +210,9 @@ public class SculptorPanel extends CustomModularScreen {
                 () -> settings.setPlacementMask(
                     settings.getPlacementMask()
                         .next())));
+        page.child(
+            blockRow(new BlockView(settings::getReplaceId, settings::getReplaceData), settings::setReplaceBlock)
+                .setEnabledIf(row -> settings.getPlacementMask() == PlacementMask.REPLACE_BLOCK));
         page.child(
             cycleButton(
                 () -> settings.isUseSelectedMaterial() ? "sculptor.panel.material.selected"
@@ -253,9 +239,32 @@ public class SculptorPanel extends CustomModularScreen {
         return page;
     }
 
+    // the block icon, the block name and the button that takes the block from the hand
+    private static Flow blockRow(BlockView block, BlockTarget target) {
+        return Flow.row()
+            .widthRel(1.0F)
+            .height(SLOT_SIZE)
+            .childPadding(ROW_GAP)
+            .child(
+                block.createSlot()
+                    .size(SLOT_SIZE))
+            .child(
+                new TextWidget<>(block.createName()).textAlign(Alignment.CenterLeft)
+                    .expanded()
+                    .heightRel(1.0F))
+            .child(
+                new ButtonWidget<>().overlay(IKey.lang("sculptor.panel.use_held_block"))
+                    .width(USE_HELD_WIDTH)
+                    .heightRel(1.0F)
+                    .onMousePressed(button -> {
+                        takeHeldBlock(target);
+                        return true;
+                    }));
+    }
+
     /**
-     * The layers page: up to {@link LayerSettings#MAX_LAYERS} rows, the spill, and a button for {@link #applyLayers}.
-     * Each possible row has a row widget, and a widget past the row count is hidden.
+     * The layers page: up to {@link LayerSettings#MAX_LAYERS} rows, the height variation, and a button for
+     * {@link #applyLayers}. Each possible row has a row widget, and a widget past the row count is hidden.
      */
     private static Flow buildLayersPage() {
         final Flow page = page(Tab.LAYERS);
@@ -273,17 +282,19 @@ public class SculptorPanel extends CustomModularScreen {
                 })
                     .setEnabledIf(button -> LAYERS.getRowCount() < LayerSettings.MAX_LAYERS))
                 .child(
-                    new TextWidget<>(IKey.lang("sculptor.panel.layers.spill", () -> new Object[] { LAYERS.getSpill() }))
-                        .textAlign(Alignment.CenterLeft)
-                        .width(LABEL_WIDTH - SLIDER_ROW_HEIGHT - ROW_GAP)
-                        .heightRel(1.0F))
+                    new TextWidget<>(
+                        IKey.lang(
+                            "sculptor.panel.layers.height_variation",
+                            () -> new Object[] { LAYERS.getHeightVariation() })).textAlign(Alignment.CenterLeft)
+                                .width(HEIGHT_VARIATION_WIDTH)
+                                .heightRel(1.0F))
                 .child(
-                    new SliderWidget().bounds(0, LayerFill.MAX_SPILL)
+                    new SliderWidget().bounds(0, LayerFill.MAX_HEIGHT_VARIATION)
                         .stopper(1)
                         .value(
                             new DoubleValue.Dynamic(
-                                LAYERS::getSpill,
-                                value -> LAYERS.setSpill((int) Math.round(value))))
+                                LAYERS::getHeightVariation,
+                                value -> LAYERS.setHeightVariation((int) Math.round(value))))
                         .expanded()
                         .heightRel(1.0F)));
 

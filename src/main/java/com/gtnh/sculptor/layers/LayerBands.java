@@ -14,7 +14,7 @@ import java.util.List;
  */
 public final class LayerBands {
 
-    // the lowest row of each layer, with no spill
+    // the lowest row of each layer, with no height variation
     private final int[] nominalEdges;
     private final int edgeCount;
 

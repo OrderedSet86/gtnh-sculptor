@@ -26,6 +26,8 @@ public final class BrushSettings {
     private double autoSmooth;
     private boolean useSelectedMaterial;
     private OverhangMode overhang = OverhangMode.SETTLE;
+    private int replaceId = BlockID.DIRT;
+    private int replaceData;
 
     // incremented on each change of a setting
     private int revision;
@@ -116,6 +118,22 @@ public final class BrushSettings {
         }
     }
 
+    public int getReplaceId() {
+        return replaceId;
+    }
+
+    public int getReplaceData() {
+        return replaceData;
+    }
+
+    public void setReplaceBlock(int id, int data) {
+        if (id != this.replaceId || data != this.replaceData) {
+            this.replaceId = id;
+            this.replaceData = data;
+            revision++;
+        }
+    }
+
     public PlacementMask getPlacementMask() {
         return placementMask;
     }
@@ -159,6 +177,7 @@ public final class BrushSettings {
             .autoSmooth(autoSmooth)
             .useSelectedMaterial(useSelectedMaterial)
             .overhang(overhang)
+            .replaceBlock(new BaseBlock(replaceId, replaceData))
             .build();
     }
 

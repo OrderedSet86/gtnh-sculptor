@@ -40,23 +40,30 @@ public enum PlacementMask {
     },
 
     /**
-     * Write over a block of the brush material only, to reshape a placed build without a change to the blocks around
-     * the build. The data value must match too, so a colour or a rotation of the block is a different block.
+     * Write over the replace block only. With dirt as the replace block, a stone brush turns dirt into stone, and the
+     * other blocks stay unchanged. The data value must match too, so a colour or a rotation of the block is a different
+     * block. A removal is checked too, so an air brush removes the replace block only.
      */
-    REPLACE_MATERIAL {
+    REPLACE_BLOCK {
 
         @Override
-        public boolean allows(BaseBlock existing, BaseBlock material) {
-            if (existing == null || material == null) return false;
-            return existing.getType() == material.getType() && existing.getData() == material.getData();
+        public boolean allows(BaseBlock existing, BaseBlock replaceBlock) {
+            if (existing == null || replaceBlock == null) return false;
+            return existing.getType() == replaceBlock.getType() && existing.getData() == replaceBlock.getData();
+        }
+
+        @Override
+        public boolean checksRemovals() {
+            return true;
         }
     };
 
     /**
-     * Report whether the mask allows a write over {@code existing}, with the brush material {@code material}.
-     * {@code existing} is {@code null} when unknown.
+     * Report whether the mask allows a write over {@code existing}. {@code existing} is {@code null} when unknown.
+     *
+     * @param replaceBlock the block that a brush may write over under {@link #REPLACE_BLOCK}
      */
-    public abstract boolean allows(BaseBlock existing, BaseBlock material);
+    public abstract boolean allows(BaseBlock existing, BaseBlock replaceBlock);
 
     /**
      * Report whether {@link #allows} reads {@code existing}. A read of the existing block costs three chunk lookups, a
@@ -64,6 +71,15 @@ public enum PlacementMask {
      */
     public boolean inspectsExisting() {
         return true;
+    }
+
+    /**
+     * Report whether the mask applies to every removal. The other masks apply to a removal only during the auto-smooth
+     * pass, under {@link SculptorEditContext#setGuardRemovals}: under {@link #AIR_ONLY}, a carving brush writes air
+     * over blocks that are not air.
+     */
+    public boolean checksRemovals() {
+        return false;
     }
 
     public String getLangKey() {

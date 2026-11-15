@@ -130,7 +130,7 @@ public enum SculptorBrush {
      * @param centre the block at the crosshair
      */
     public void apply(SculptorEditContext ctx, Vector centre, BrushParams params) throws MaxChangedBlocksException {
-        ctx.setMaterial(params.material());
+        ctx.setReplaceBlock(params.replaceBlock());
         final BrushStroke stroke = new BrushStroke(ctx, centre, params);
         if (!(autoSmoothable && params.autoSmooth() > 0.0D)) {
             place(stroke);

@@ -69,7 +69,7 @@ public class SculptorGenWorld extends World {
      *
      * <p>
      * A real write of dirt and a write back would go into the history twice, add to the count of changed blocks, and
-     * fail under the masks {@code AIR_ONLY} and {@code REPLACE_MATERIAL}.
+     * fail under the masks {@code AIR_ONLY} and {@code REPLACE_BLOCK}.
      * </p>
      */
     public void setSoilOverride(int x, int y, int z) {

@@ -83,12 +83,12 @@ public class PreviewMatchesCommitTest {
     }
 
     @Test
-    public void replaceMaterialMaskOnlyOverwritesMatchingBlocks() throws Exception {
+    public void replaceBlockMaskOnlyOverwritesMatchingBlocks() throws Exception {
         SculptorEditContext preview = SculptorEditContext.preview(new TestWorld(new LinkedHashMap<>()));
-        preview.setPlacementMask(PlacementMask.REPLACE_MATERIAL);
-        preview.setMaterial(new BaseBlock(BlockID.STONE));
+        preview.setPlacementMask(PlacementMask.REPLACE_BLOCK);
+        preview.setReplaceBlock(new BaseBlock(BlockID.STONE));
 
-        // the stone matches the brush material. The plant and the air above the stone do not
+        // the stone matches the replace block. The plant and the air above the stone do not
         assertTrue(preview.setBlock(new Vector(0, 60, 0), new BaseBlock(BlockID.DIRT)));
         assertFalse(preview.setBlock(new Vector(0, 61, 0), new BaseBlock(BlockID.DIRT)));
         assertFalse(preview.setBlock(new Vector(0, 62, 0), new BaseBlock(BlockID.DIRT)));

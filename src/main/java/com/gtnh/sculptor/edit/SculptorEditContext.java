@@ -38,7 +38,7 @@ public class SculptorEditContext {
     private final PreviewBuffer buffer;
 
     private PlacementMask placementMask = PlacementMask.OVERWRITE;
-    private BaseBlock material = AIR;
+    private BaseBlock replaceBlock = AIR;
 
     // null until trackWrites()
     private Set<BlockVector> written;
@@ -102,9 +102,9 @@ public class SculptorEditContext {
         this.guardRemovals = guard;
     }
 
-    /** Set the brush material, which {@link PlacementMask#REPLACE_MATERIAL} compares against. */
-    public void setMaterial(BaseBlock material) {
-        this.material = (material != null) ? material : AIR;
+    /** Set the block that a brush may write over under {@link PlacementMask#REPLACE_BLOCK}. */
+    public void setReplaceBlock(BaseBlock replaceBlock) {
+        this.replaceBlock = (replaceBlock != null) ? replaceBlock : AIR;
     }
 
     public boolean setAir(int x, int y, int z) throws MaxChangedBlocksException {
@@ -113,16 +113,17 @@ public class SculptorEditContext {
 
     /** Write a block, and return {@code false} when the placement mask rejects the write. */
     public boolean setBlock(Vector position, BaseBlock block) throws MaxChangedBlocksException {
-        // the mask applies to a placement, and to a removal only under setGuardRemovals()
+        // the mask applies to a placement, and to a removal under setGuardRemovals() or a mask that checks removals.
+        // Under such a mask, a position that this stroke wrote stays writable
         boolean placing = block.getType() != BlockID.AIR;
 
         // toBlockVector() allocates, and a stroke writes tens of thousands of blocks. Convert only when recording
         BlockVector key = (written != null) ? position.toBlockVector() : null;
         boolean ours = key != null && written.contains(key);
 
+        final boolean checked = placementMask.checksRemovals() ? !ours : (placing || (guardRemovals && !ours));
         // check inspectsExisting() first. Under OVERWRITE the check skips the read of the existing block
-        if ((placing || (guardRemovals && !ours)) && placementMask.inspectsExisting()
-            && !placementMask.allows(getBlock(position), material)) {
+        if (checked && placementMask.inspectsExisting() && !placementMask.allows(getBlock(position), replaceBlock)) {
             return false;
         }
 

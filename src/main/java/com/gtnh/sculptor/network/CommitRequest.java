@@ -26,6 +26,8 @@ import io.netty.buffer.ByteBuf;
  *     int     radius
  *     short   material id
  *     byte    material data
+ *     short   replace block id
+ *     byte    replace block data
  *     short   secondary
  *     byte    strength in hundredths
  *     byte    auto-smooth in hundredths
@@ -39,9 +41,10 @@ public record CommitRequest(SculptorBrush brush, Vector target, BrushParams para
 
     public static final int MAX_RADIUS = 64;
     public static final int MAX_SECONDARY = 64;
-    private static final int FIXED_BYTES = 12 + 4 + 2 + 1 + 2 + 1 + 1 + 1;
+    private static final int FIXED_BYTES = 12 + 4 + 2 + 1 + 2 + 1 + 2 + 1 + 1 + 1;
     private static final double HUNDREDTHS = 100.0D;
 
+    /** Write the commit in the layout of the class javadoc. */
     public void encode(ByteBuf buf) {
         writeName(buf, brush);
         buf.writeInt(target.getBlockX());
@@ -53,6 +56,12 @@ public record CommitRequest(SculptorBrush brush, Vector target, BrushParams para
                 .getType());
         buf.writeByte(
             params.material()
+                .getData());
+        buf.writeShort(
+            params.replaceBlock()
+                .getType());
+        buf.writeByte(
+            params.replaceBlock()
                 .getData());
         buf.writeShort(params.secondary());
         // strength and auto-smooth are from 0 to 1. The panel sliders are coarser than hundredths
@@ -77,6 +86,8 @@ public record CommitRequest(SculptorBrush brush, Vector target, BrushParams para
         final int radius = buf.readInt();
         final int materialId = buf.readShort() & 0xFFFF;
         final int materialData = buf.readByte() & 0xF;
+        final int replaceId = buf.readShort() & 0xFFFF;
+        final int replaceData = buf.readByte() & 0xF;
         final int secondary = buf.readShort();
         final double strength = clamp01((buf.readByte() & 0xFF) / HUNDREDTHS);
         final double autoSmooth = clamp01((buf.readByte() & 0xFF) / HUNDREDTHS);
@@ -101,6 +112,7 @@ public record CommitRequest(SculptorBrush brush, Vector target, BrushParams para
             .autoSmooth(autoSmooth)
             .useSelectedMaterial(useSelectedMaterial)
             .overhang(overhang)
+            .replaceBlock(new BaseBlock(replaceId, replaceData))
             .build();
         return new CommitRequest(brush, target, params, mask);
     }

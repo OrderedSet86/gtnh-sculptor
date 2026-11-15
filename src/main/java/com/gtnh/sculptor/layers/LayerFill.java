@@ -13,27 +13,26 @@ import com.sk89q.worldedit.regions.Region;
 /**
  * Replace each block in a region, except air, with the block of the layer at the block's altitude. {@code top} and
  * {@code bottom} of the {@link LayerBands} are the Y of the highest and of the lowest block in the region, except air.
- * Without spill, the bands are the same in every column.
+ * Without height variation, the bands are the same in every column.
  */
 public final class LayerFill {
 
-    public static final int MAX_SPILL = 32;
+    public static final int MAX_HEIGHT_VARIATION = 32;
 
     // the spacing of the noise lattice, in blocks. With a wider spacing, the waves of a band edge are longer
     private static final double NOISE_LATTICE_BLOCKS = 16.0D;
 
     private final LayerStack stack;
-    private final int spill;
+    private final int heightVariation;
     private final int seed;
 
     /**
-     * @param spill from 0 to {@link #MAX_SPILL}, the most rows that a band edge moves up or down
-     * @param seed  the seed of the noise of the first edge. Edge {@code i} has seed {@code seed + i}, so the edges wave
-     *              apart
+     * @param heightVariation from 0 to {@link #MAX_HEIGHT_VARIATION}, the most rows that a band edge moves up or down
+     * @param seed            the seed of the noise of edge 0. Edge {@code i} has seed {@code seed + i}
      */
-    public LayerFill(LayerStack stack, int spill, int seed) {
+    public LayerFill(LayerStack stack, int heightVariation, int seed) {
         this.stack = stack;
-        this.spill = spill;
+        this.heightVariation = heightVariation;
         this.seed = seed;
     }
 
@@ -92,11 +91,11 @@ public final class LayerFill {
     }
 
     private void computeEdgeOffsets(PerlinNoise[] edgeNoise, Vector2D column, int[] edgeOffsets) {
-        if (spill == 0) return;
+        if (heightVariation == 0) return;
         for (int edge = 0; edge < edgeOffsets.length; edge++) {
             // JLibNoiseGenerator clamps the output of the noise to [0, 1]
             final double wave = 2.0D * edgeNoise[edge].noise(column) - 1.0D;
-            edgeOffsets[edge] = (int) Math.round(spill * wave);
+            edgeOffsets[edge] = (int) Math.round(heightVariation * wave);
         }
     }
 }

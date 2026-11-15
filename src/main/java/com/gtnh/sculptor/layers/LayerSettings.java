@@ -7,8 +7,8 @@ import com.github.bsideup.jabel.Desugar;
 import com.sk89q.worldedit.blocks.BlockID;
 
 /**
- * The rows of the Layers page of the editor panel, top to bottom, and the spill, with {@link #buildCommand} for the
- * {@code /sclayers} command of the rows.
+ * The rows of the Layers page of the editor panel, top to bottom, and the height variation, with {@link #buildCommand}
+ * for the {@code /sclayers} command of the rows.
  *
  * <pre>
  *     /sclayers 10:1 *:2 10:7 -s 3
@@ -22,7 +22,7 @@ public final class LayerSettings {
     public static final int MAX_COUNT = 9999;
 
     private final List<LayerRow> rows = new ArrayList<>();
-    private int spill;
+    private int heightVariation;
 
     public LayerSettings() {
         rows.add(new LayerRow(BlockID.STONE, 0, 10, false));
@@ -69,12 +69,12 @@ public final class LayerSettings {
         rows.set(index, new LayerRow(blockId, blockData, layer.count(), layer.rest()));
     }
 
-    public int getSpill() {
-        return spill;
+    public int getHeightVariation() {
+        return heightVariation;
     }
 
-    public void setSpill(int spill) {
-        this.spill = Math.max(0, Math.min(LayerFill.MAX_SPILL, spill));
+    public void setHeightVariation(int heightVariation) {
+        this.heightVariation = Math.max(0, Math.min(LayerFill.MAX_HEIGHT_VARIATION, heightVariation));
     }
 
     /** Write the rows as a {@code /sclayers} command, with each block as {@code id} or {@code id:data}. */
@@ -88,8 +88,8 @@ public final class LayerSettings {
             if (layer.blockData() != 0) command.append(':')
                 .append(layer.blockData());
         }
-        if (spill > 0) command.append(" -s ")
-            .append(spill);
+        if (heightVariation > 0) command.append(" -s ")
+            .append(heightVariation);
         return command.toString();
     }
 

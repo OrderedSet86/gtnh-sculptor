@@ -29,7 +29,7 @@ sculptor.brush.secondary.iterations=Iterations: %s
 
 sculptor.mask.overwrite=Overwrite anything
 sculptor.mask.air_only=Air only
-sculptor.mask.replace_material=Replace selected only
+sculptor.mask.replace_block=Replace only this block:
 
 sculptor.overhang.settle=Overhang: fill to ground
 sculptor.overhang.cantilever=Overhang: cantilever
@@ -53,14 +53,14 @@ sculptor.undo.empty=Sculptor: nothing to undo
 sculptor.redo.done=Sculptor: redone
 sculptor.redo.empty=Sculptor: nothing to redo
 
-sculptor.layers.usage=/sclayers COUNT:BLOCK ... [-s SPILL], such as /sclayers 10:stone *:grass 10:bedrock -s 3
+sculptor.layers.usage=/sclayers COUNT:BLOCK ... [-s HEIGHT_VARIATION], such as /sclayers 10:stone *:grass 10:bedrock -s 3
 sculptor.layers.done=Sculptor: layered %s blocks
 sculptor.layers.no_selection=Sculptor: select a region first, with //pos1 and //pos2 or the WorldEdit wand
 sculptor.layers.bad_token=Sculptor: '%s' is not a layer. Write COUNT:BLOCK, such as 10:stone or *:grass
 sculptor.layers.two_rest=Sculptor: only one layer can have the count *
 sculptor.layers.unknown_block=Sculptor: unknown block in '%s': %s
-sculptor.layers.bad_spill=Sculptor: write a whole number from 0 to 32 after -s, not '%s'
-sculptor.layers.missing_spill=Sculptor: write a whole number from 0 to 32 after -s
+sculptor.layers.bad_height_variation=Sculptor: write a whole number from 0 to 32 after -s, not '%s'
+sculptor.layers.missing_height_variation=Sculptor: write a whole number from 0 to 32 after -s
 sculptor.layers.too_many_blocks=Sculptor: the fill stopped at the block limit of %s. //undo reverts the blocks changed before the stop
 
 sculptor.camera.speed.slow=Slow
@@ -112,7 +112,7 @@ sculptor.panel.layers.add=Add layer
 sculptor.panel.layers.remove=Remove layer
 sculptor.panel.layers.rest=Rest
 sculptor.panel.layers.rest.tooltip=Fill the blocks between the layers above and below
-sculptor.panel.layers.spill=Spill: %s
+sculptor.panel.layers.height_variation=Height variation: %s
 sculptor.panel.layers.apply=Fill the WorldEdit selection
 sculptor.panel.camera=Camera (blocks/sec)
 sculptor.panel.camera.tab=Camera
