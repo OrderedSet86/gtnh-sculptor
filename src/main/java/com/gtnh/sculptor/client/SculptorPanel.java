@@ -201,18 +201,6 @@ public class SculptorPanel extends CustomModularScreen {
         page.child(
             blockRow(new BlockView(settings::getReplaceId, settings::getReplaceData), settings::setReplaceBlock)
                 .setEnabledIf(row -> settings.getPlacementMask() == PlacementMask.REPLACE_BLOCK));
-        page.child(
-            cycleButton(
-                () -> settings.isUseSelectedMaterial() ? "sculptor.panel.material.selected"
-                    : "sculptor.panel.material.existing",
-                () -> settings.setUseSelectedMaterial(!settings.isUseSelectedMaterial())));
-        page.child(
-            cycleButton(
-                () -> settings.getOverhang()
-                    .getLangKey(),
-                () -> settings.setOverhang(
-                    settings.getOverhang()
-                        .next())));
 
         page.child(
             sliderRow(
@@ -225,6 +213,25 @@ public class SculptorPanel extends CustomModularScreen {
                     .value(new DoubleValue.Dynamic(settings::getAutoSmooth, settings::setAutoSmooth))).setEnabledIf(
                         row -> settings.getBrush()
                             .isAutoSmoothable()));
+        // the overhang row and the new blocks row can appear when auto-smooth goes above 0. Above the auto-smooth
+        // slider, a row would move the slider during a drag
+        page.child(
+            cycleButton(
+                () -> settings.getOverhang()
+                    .getLangKey(),
+                () -> settings.setOverhang(
+                    settings.getOverhang()
+                        .next())).setEnabledIf(
+                            button -> settings.getBrush()
+                                .usesOverhang(settings.getMaterialId(), settings.getAutoSmooth())));
+        page.child(
+            cycleButton(
+                () -> settings.isUseSelectedMaterial() ? "sculptor.panel.new_blocks.material"
+                    : "sculptor.panel.new_blocks.terrain",
+                () -> settings.setUseSelectedMaterial(!settings.isUseSelectedMaterial())).setEnabledIf(button -> {
+                    final SculptorBrush brush = settings.getBrush();
+                    return brush.hasNewBlockMode() || (brush.isAutoSmoothable() && settings.getAutoSmooth() > 0.0D);
+                }));
         return page;
     }
 

@@ -51,6 +51,11 @@ public enum SculptorBrush {
                     .secondary(),
                 SmoothingBounds.UNBOUNDED);
         }
+
+        @Override
+        public boolean hasNewBlockMode() {
+            return true;
+        }
     },
     GRAVITY(SecondaryParameter.NONE, false, false) {
 
@@ -65,6 +70,11 @@ public enum SculptorBrush {
         public void place(BrushStroke stroke) throws MaxChangedBlocksException {
             stroke.raiseLower(1);
         }
+
+        @Override
+        public boolean hasNewBlockMode() {
+            return true;
+        }
     },
     LOWER(SecondaryParameter.NONE, true, true) {
 
@@ -72,12 +82,22 @@ public enum SculptorBrush {
         public void place(BrushStroke stroke) throws MaxChangedBlocksException {
             stroke.raiseLower(-1);
         }
+
+        @Override
+        public boolean hasNewBlockMode() {
+            return true;
+        }
     },
     FLATTEN(SecondaryParameter.NONE, true, true) {
 
         @Override
         public void place(BrushStroke stroke) throws MaxChangedBlocksException {
             stroke.flatten();
+        }
+
+        @Override
+        public boolean hasNewBlockMode() {
+            return true;
         }
     },
     ERODE(SecondaryParameter.NONE, true, false) {
@@ -92,6 +112,11 @@ public enum SculptorBrush {
         @Override
         public void place(BrushStroke stroke) throws MaxChangedBlocksException {
             stroke.erode(true);
+        }
+
+        @Override
+        public boolean hasNewBlockMode() {
+            return true;
         }
     },
     TREE(SecondaryParameter.NONE, true, false) {
@@ -149,9 +174,10 @@ public enum SculptorBrush {
 
         place(stroke);
 
-        // an air stroke carves, and leaves no shape to fill under or to curve down
-        final boolean placesShape = fillsDownToGround() && params.material()
-            .getType() != BlockID.AIR;
+        final boolean placesShape = usesOverhang(
+            params.material()
+                .getType(),
+            params.autoSmooth());
         final boolean cantilever = placesShape && params.overhang() == OverhangMode.CANTILEVER;
         final ShapeProfile shape = cantilever ? computeShapeProfile(centre, params) : null;
         if (cantilever) {
@@ -194,6 +220,15 @@ public enum SculptorBrush {
     }
 
     public abstract void place(BrushStroke stroke) throws MaxChangedBlocksException;
+
+    /**
+     * Report whether {@link BrushParams#overhang} changes the stroke. With auto-smooth above 0, a solid shape fills
+     * down to the ground or curves the underside down. An air stroke carves, and leaves no shape to fill under or to
+     * curve down.
+     */
+    public boolean usesOverhang(int materialId, double autoSmooth) {
+        return autoSmoothable && autoSmooth > 0.0D && fillsDownToGround() && materialId != BlockID.AIR;
+    }
 
     /**
      * Report whether the shape fills down to the ground, or curves the underside down, when auto-smooth is on: true for
@@ -277,6 +312,15 @@ public enum SculptorBrush {
 
     public int getSecondaryMax() {
         return secondary.max;
+    }
+
+    /**
+     * Report whether {@link BrushParams#useSelectedMaterial} changes the blocks that the brush writes: the new top and
+     * the filler of a reshaped column, or the fill of Melt. For the auto-smooth pass, {@link #apply} calls
+     * {@link BrushStroke#smooth}, so the mode applies to an auto-smoothable brush with auto-smooth above 0 too.
+     */
+    public boolean hasNewBlockMode() {
+        return false;
     }
 
     public boolean usesStrength() {
