@@ -76,6 +76,8 @@ public class SculptorPanel extends CustomModularScreen {
     private static final int REST_TOGGLE_WIDTH = 26;
     private static final int USE_HELD_WIDTH = 80;
     private static final int HEIGHT_VARIATION_WIDTH = 110;
+    private static final int LABEL_HEIGHT = 10;
+    private static final int BRUSH_LIST_ROW_HEIGHT = 14;
 
     // the panel is a new screen on each open. The open tab, the layer rows and the result of the last path save or load
     // stay for the next open
@@ -104,6 +106,7 @@ public class SculptorPanel extends CustomModularScreen {
         return super.onKeyPressed(typedChar, keyCode);
     }
 
+    /** Build the panel: the tab row, the three pages, and the brush list over the brush page. */
     @Override
     public ModularPanel buildUI(ModularGuiContext context) {
         final ModularPanel panel = ModularPanel.defaultPanel("sculptor", PANEL_WIDTH, PANEL_HEIGHT);
@@ -117,14 +120,17 @@ public class SculptorPanel extends CustomModularScreen {
         for (final Tab tab : Tab.values()) tabRow.child(tabButton(tab, tabs));
         panel.child(tabRow);
 
+        final BrushMenu brushMenu = new BrushMenu(BrushSettings.instance());
         panel.child(
             new PagedWidget<>().sizeRel(1.0F)
                 .controller(tabs)
                 .initialPage(openTab)
                 .onPageChange(page -> openTab = page)
-                .addPage(buildBrushPage(BrushSettings.instance()))
+                .addPage(buildBrushPage(BrushSettings.instance(), brushMenu))
                 .addPage(buildLayersPage())
                 .addPage(buildCameraPage(CameraSettings.instance())));
+        // the children of a panel are drawn in order, so the brush list, added last, is drawn over the brush page
+        panel.child(brushMenu.createList(tabs));
         return panel;
     }
 
@@ -139,32 +145,10 @@ public class SculptorPanel extends CustomModularScreen {
      * The brush page: the brush, the size and strength sliders, the material, the three placement modes, and
      * auto-smooth. A row that the current brush does not use is hidden.
      */
-    private static Flow buildBrushPage(BrushSettings settings) {
+    private static Flow buildBrushPage(BrushSettings settings, BrushMenu brushMenu) {
         final Flow page = page(Tab.BRUSH);
 
-        page.child(
-            Flow.row()
-                .widthRel(1.0F)
-                .height(ROW_HEIGHT)
-                .child(iconButton(GuiTextures.MOVE_LEFT, "sculptor.panel.previous").onMousePressed(button -> {
-                    settings.setBrush(
-                        settings.getBrush()
-                            .previous());
-                    return true;
-                }))
-                .child(
-                    new TextWidget<>(
-                        IKey.lang(
-                            () -> settings.getBrush()
-                                .getLangKey())).textAlign(Alignment.Center)
-                                    .expanded()
-                                    .heightRel(1.0F))
-                .child(iconButton(GuiTextures.MOVE_RIGHT, "sculptor.panel.next").onMousePressed(button -> {
-                    settings.setBrush(
-                        settings.getBrush()
-                            .next());
-                    return true;
-                })));
+        page.child(brushMenu.createButton());
 
         page.child(
             sliderRow(
@@ -477,7 +461,7 @@ public class SculptorPanel extends CustomModularScreen {
     private static TextWidget<?> label(String langKey) {
         return new TextWidget<>(IKey.lang(langKey)).textAlign(Alignment.CenterLeft)
             .widthRel(1.0F)
-            .height(10);
+            .height(LABEL_HEIGHT);
     }
 
     private static Flow sliderRow(IKey label, SliderWidget slider) {
@@ -557,6 +541,82 @@ public class SculptorPanel extends CustomModularScreen {
             this.icon = icon;
             this.langKey = langKey;
             this.headingKey = headingKey;
+        }
+    }
+
+    /**
+     * The brush menu: a button with the name of the brush, and a list of every brush under the button. After a click on
+     * a brush in the list, that brush is the current brush and the list is closed.
+     */
+    private static final class BrushMenu {
+
+        // the brush page starts with the heading of the page, then the button
+        private static final int LIST_TOP = PAGE_PADDING + LABEL_HEIGHT + ROW_GAP + ROW_HEIGHT;
+        private static final int COLUMNS = 2;
+        private static final int LIST_PADDING = 2;
+
+        private final BrushSettings settings;
+        private boolean open;
+
+        private BrushMenu(BrushSettings settings) {
+            this.settings = settings;
+        }
+
+        private ButtonWidget<?> createButton() {
+            return new ButtonWidget<>().overlay(
+                IKey.lang(
+                    () -> settings.getBrush()
+                        .getLangKey()),
+                GuiTextures.ARROW_DOWN.asIcon()
+                    .size(8)
+                    .alignment(Alignment.CenterRight)
+                    .marginRight(4))
+                .widthRel(1.0F)
+                .height(ROW_HEIGHT)
+                .onMousePressed(button -> {
+                    open = !open;
+                    return true;
+                });
+        }
+
+        /**
+         * Build the list of the brushes, in the order of {@link SculptorBrush#values}, row by row. The list is enabled
+         * only while the menu is open and the brush page is the open page.
+         */
+        private Flow createList(PagedWidget.Controller tabs) {
+            final SculptorBrush[] brushes = SculptorBrush.values();
+            final int rowCount = (brushes.length + COLUMNS - 1) / COLUMNS;
+            final Flow list = Flow.column()
+                .left(PAGE_PADDING)
+                .top(LIST_TOP)
+                .width(PANEL_WIDTH - 2 * PAGE_PADDING)
+                .height(rowCount * BRUSH_LIST_ROW_HEIGHT + 2 * LIST_PADDING)
+                .padding(LIST_PADDING)
+                .background(GuiTextures.MC_BACKGROUND)
+                .setEnabledIf(widget -> open && tabs.getActivePageIndex() == Tab.BRUSH.ordinal());
+            for (int first = 0; first < brushes.length; first += COLUMNS) {
+                final Flow row = Flow.row()
+                    .widthRel(1.0F)
+                    .height(BRUSH_LIST_ROW_HEIGHT);
+                // the brushes of a short last row share the full width, so no widget below shows through
+                final int end = Math.min(first + COLUMNS, brushes.length);
+                for (int index = first; index < end; index++) {
+                    row.child(createChoice(brushes[index], 1.0F / (end - first)));
+                }
+                list.child(row);
+            }
+            return list;
+        }
+
+        private ButtonWidget<?> createChoice(SculptorBrush brush, float widthFraction) {
+            return new ButtonWidget<>().overlay(IKey.lang(brush.getLangKey()))
+                .widthRel(widthFraction)
+                .heightRel(1.0F)
+                .onMousePressed(button -> {
+                    settings.setBrush(brush);
+                    open = false;
+                    return true;
+                });
         }
     }
 

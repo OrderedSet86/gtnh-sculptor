@@ -95,8 +95,6 @@ sculptor.path.error.delete=Sculptor: could not delete '%s': %s
 sculptor.path.error.newer=Sculptor: '%s' was saved by a newer version of Sculptor
 
 sculptor.panel.brush=Brush
-sculptor.panel.previous=Previous brush
-sculptor.panel.next=Next brush
 sculptor.panel.radius=Radius: %s
 sculptor.panel.strength=Strength: %s%%
 sculptor.panel.material.unknown=unknown

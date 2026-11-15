@@ -58,6 +58,8 @@ public class SculptorCameraController {
         CATEGORY);
 
     private static final int TICKS_PER_SECOND = 20;
+    private static final double START_BLOCKS_BACK = 4.0D;
+    private static final double START_BLOCKS_UP = 2.0D;
 
     // set by the constructor. ClientProxy creates one controller, and the panel and /scpath get the path from
     // instance()
@@ -146,8 +148,9 @@ public class SculptorCameraController {
     }
 
     /**
-     * Turn on the free camera at the eye position and the rotation of the player, and stop the movement input of the
-     * player.
+     * Turn on the free camera {@link #START_BLOCKS_BACK} blocks behind and {@link #START_BLOCKS_UP} blocks above the
+     * eye of the player, with the rotation of the player, and stop the movement input of the player. At the eye, the
+     * view starts inside the head of the player model.
      */
     private void attach(Minecraft mc) {
         final EntityClientPlayerMP player = mc.thePlayer;
@@ -155,7 +158,8 @@ public class SculptorCameraController {
         // in 1.7.10 the posY of a player is at eye height. The bounding box hangs yOffset below posY
         camera = new SculptorCamera(
             mc.theWorld,
-            new CameraPose(player.posX, player.posY, player.posZ, player.rotationYaw, player.rotationPitch));
+            new CameraPose(player.posX, player.posY, player.posZ, player.rotationYaw, player.rotationPitch)
+                .moveBackAndUp(START_BLOCKS_BACK, START_BLOCKS_UP));
 
         mc.renderViewEntity = camera;
 

@@ -287,16 +287,6 @@ public enum SculptorBrush {
         return autoSmoothable;
     }
 
-    public SculptorBrush next() {
-        final SculptorBrush[] all = values();
-        return all[(ordinal() + 1) % all.length];
-    }
-
-    public SculptorBrush previous() {
-        final SculptorBrush[] all = values();
-        return all[(ordinal() + all.length - 1) % all.length];
-    }
-
     /** The meaning and the range of the second parameter of a brush. */
     private enum SecondaryParameter {
 
