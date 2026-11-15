@@ -98,6 +98,47 @@ public class RealTerrainTest {
             countTerrainBlocksDeleted(world, ctx) > 0);
     }
 
+    /**
+     * An air stroke carves, and has no underside, so the overhang mode has no effect on the blocks of the stroke. The
+     * strokes are on a grid of centres around each recorded cliff, in the cliff and in the air beside the cliff.
+     */
+    @Test
+    public void airStrokeIgnoresTheOverhangMode() throws Exception {
+        final String[] places = { "noBottomSmoothing", "strayRemovals" };
+        final int[][] centres = { { 907, 40, -623 }, { 904, 43, -623 } };
+
+        for (int i = 0; i < places.length; i++) {
+            for (int dx = -6; dx <= 6; dx += 3) {
+                for (int dy = -4; dy <= 6; dy += 2) {
+                    final Vector at = new Vector(centres[i][0] + dx, centres[i][1] + dy, centres[i][2]);
+                    for (SculptorBrush brush : new SculptorBrush[] { SculptorBrush.SPHERE, SculptorBrush.CYLINDER }) {
+                        final Map<BlockVector, BaseBlock> settled = runAirStroke(
+                            places[i],
+                            brush,
+                            at,
+                            OverhangMode.SETTLE);
+                        final Map<BlockVector, BaseBlock> cantilevered = runAirStroke(
+                            places[i],
+                            brush,
+                            at,
+                            OverhangMode.CANTILEVER);
+                        assertEquals(places[i] + " " + brush + " at " + at, settled, cantilevered);
+                    }
+                }
+            }
+        }
+    }
+
+    private static Map<BlockVector, BaseBlock> runAirStroke(String place, SculptorBrush brush, Vector at,
+        OverhangMode mode) throws Exception {
+        final SculptorEditContext ctx = SculptorEditContext.preview(RecordedTerrain.named(place));
+        final BrushParams params = createParams(HEIGHT, 0.8D, mode).toBuilder()
+            .material(new BaseBlock(BlockID.AIR))
+            .build();
+        brush.apply(ctx, at, params);
+        return ctx.getPendingChanges();
+    }
+
     private static SculptorEditContext runCylinder(RecordedTerrain world, Vector at, BrushParams params)
         throws Exception {
         final SculptorEditContext ctx = SculptorEditContext.preview(world);

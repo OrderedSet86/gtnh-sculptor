@@ -6,7 +6,6 @@ import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.StatCollector;
 import net.minecraftforge.client.event.MouseEvent;
-import net.minecraftforge.client.event.RenderGameOverlayEvent;
 
 import org.lwjgl.input.Keyboard;
 
@@ -214,15 +213,11 @@ public class SculptorBrushTool {
             .clear();
     }
 
-    @SubscribeEvent
-    public void onRenderOverlay(RenderGameOverlayEvent.Post event) {
-        if (!active || event.type != RenderGameOverlayEvent.ElementType.TEXT) return;
-
-        final int hudTop = 20;
-        final int hudColor = 0xFFFFAA00;
+    /** Report the HUD line of sculpt mode, or {@code null} when sculpt mode is off. */
+    public String readHudLine() {
+        if (!active) return null;
         updateHudLine();
-        Minecraft.getMinecraft().fontRenderer
-            .drawStringWithShadow(hudLine, 4, event.resolution.getScaledHeight() - hudTop, hudColor);
+        return hudLine;
     }
 
     /** Rebuild the HUD text when a value in the text changes. The overlay event fires each frame. */

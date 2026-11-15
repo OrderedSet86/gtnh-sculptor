@@ -288,6 +288,26 @@ public class BrushBehaviourTest {
         assertTrue("the plant over the centre column should be gone", ctx.isAir(new Vector(0, SURFACE_Y + 1, 0)));
     }
 
+    /** A sphere of air carves a hole, and writes no solid block. */
+    @Test
+    public void airSphereCarvesAndPlacesNothing() throws Exception {
+        final SculptorEditContext ctx = SculptorEditContext.preview(new LayeredWorld());
+        final BrushParams params = createParams(4, 1.0D).toBuilder()
+            .material(new BaseBlock(BlockID.AIR))
+            .build();
+        SculptorBrush.SPHERE.apply(ctx, new Vector(0, SURFACE_Y, 0), params);
+
+        final Map<BlockVector, BaseBlock> changes = ctx.getPendingChanges();
+        assertTrue("an air sphere should carve", !changes.isEmpty());
+        for (Map.Entry<BlockVector, BaseBlock> change : changes.entrySet()) {
+            assertEquals(
+                "solid block written at " + change.getKey(),
+                BlockID.AIR,
+                change.getValue()
+                    .getType());
+        }
+    }
+
     private static BrushParams createParams(int radius, double strength) {
         return createSmoothingParams(radius, strength, 0.0D);
     }

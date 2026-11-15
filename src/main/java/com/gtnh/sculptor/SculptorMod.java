@@ -6,6 +6,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.gtnh.sculptor.command.SculptorCommand;
+import com.gtnh.sculptor.command.SculptorLayersCommand;
 import com.gtnh.sculptor.proxy.CommonProxy;
 
 import cpw.mods.fml.common.Mod;
@@ -62,6 +63,7 @@ public class SculptorMod {
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(SculptorCommand.undoCommand());
         event.registerServerCommand(SculptorCommand.redoCommand());
+        event.registerServerCommand(new SculptorLayersCommand());
     }
 
     /** The Forge configuration directory, or {@code null} before pre-init. */

@@ -6,6 +6,7 @@ import com.gtnh.sculptor.edit.PlacementMask;
 import com.gtnh.sculptor.edit.SculptorEditContext;
 import com.sk89q.worldedit.MaxChangedBlocksException;
 import com.sk89q.worldedit.Vector;
+import com.sk89q.worldedit.blocks.BlockID;
 
 /**
  * The brushes of Sculptor. The preview and the commit both run a brush through {@link #apply}, with a context of each
@@ -148,14 +149,17 @@ public enum SculptorBrush {
 
         place(stroke);
 
-        final boolean cantilever = fillsDownToGround() && params.overhang() == OverhangMode.CANTILEVER;
+        // an air stroke carves, and leaves no shape to fill under or to curve down
+        final boolean placesShape = fillsDownToGround() && params.material()
+            .getType() != BlockID.AIR;
+        final boolean cantilever = placesShape && params.overhang() == OverhangMode.CANTILEVER;
         final ShapeProfile shape = cantilever ? computeShapeProfile(centre, params) : null;
         if (cantilever) {
             // the fraction of the thickness of a column that the underside may drop. A cylinder has a flat underside to
             // round off. A sphere is round below already, and a drop of the full thickness of a column hangs a teardrop
             final double depthFactor = (this == CYLINDER) ? 1.0D : 0.5D;
             stroke.cantileverOntoGround(groundBefore, shape, depthFactor);
-        } else if (fillsDownToGround()) {
+        } else if (placesShape) {
             stroke.settleOntoGround(groundBefore);
         }
 
@@ -259,7 +263,10 @@ public enum SculptorBrush {
         return secondary != SecondaryParameter.NONE;
     }
 
-    /** The lang key of the second parameter, such as the height of a cylinder. */
+    /**
+     * The lang key of the second parameter, such as the height of a cylinder, or {@code null} when
+     * {@link #hasSecondary} is false.
+     */
     public String getSecondaryLangKey() {
         return secondary.langKey;
     }
@@ -293,7 +300,7 @@ public enum SculptorBrush {
     /** The meaning and the range of the second parameter of a brush. */
     private enum SecondaryParameter {
 
-        NONE("sculptor.panel.secondary.unused", 0, 0),
+        NONE(null, 0, 0),
         HEIGHT("sculptor.brush.secondary.height", 1, 32),
         ITERATIONS("sculptor.brush.secondary.iterations", 1, 8);
 

@@ -57,6 +57,10 @@ easy to hit mid-stroke:
 | `/scr` | Redo the edit you undid |
 | `/scpath save\|load\|delete <name>` | Save, reload or remove a camera path |
 | `/scpath list` | What you have saved |
+| `/sclayers 10:stone *:grass 10:bedrock -s 3` | Fill the WorldEdit selection in bands of altitude. Each count is the thickness of a layer in blocks, from the highest block down. After the `*` layer, the counts are from the lowest block up. `*` fills the blocks between. Air stays air. `-s N` moves each band edge up or down by up to N blocks, in waves. `/sclayers 1:grass 3:dirt *:stone` gives grass over 3 blocks of dirt over stone. `//undo` reverts the fill. `/scu` does not |
+
+On the Layers tab of the `N` panel, set rows of a block and a count, then press **Fill the WorldEdit selection** to
+send the rows as `/sclayers`.
 
 Undo and redo also answer to `//scu` and `//scr`. They are separate from WorldEdit's `//undo`,
 which walks your command history and will not revert a brush stroke — and Sculptor's will not

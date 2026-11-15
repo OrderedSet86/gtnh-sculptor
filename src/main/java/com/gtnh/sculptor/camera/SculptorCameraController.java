@@ -12,7 +12,6 @@ import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovementInput;
 import net.minecraft.util.StatCollector;
-import net.minecraftforge.client.event.RenderGameOverlayEvent;
 
 import org.lwjgl.input.Keyboard;
 
@@ -444,15 +443,11 @@ public class SculptorCameraController {
             + (-p0 + 3.0D * p1 - 3.0D * p2 + p3) * t3);
     }
 
-    @SubscribeEvent
-    public void onRenderOverlay(RenderGameOverlayEvent.Post event) {
-        if (!isActive() || event.type != RenderGameOverlayEvent.ElementType.TEXT) return;
-
-        final int hudTop = 32;
-        final int hudColor = 0xFF66CCFF;
+    /** Report the HUD line of the free camera, or {@code null} when the free camera is off. */
+    public String readHudLine() {
+        if (!isActive()) return null;
         updateHudLine();
-        Minecraft.getMinecraft().fontRenderer
-            .drawStringWithShadow(hudLine, 4, event.resolution.getScaledHeight() - hudTop, hudColor);
+        return hudLine;
     }
 
     /** Rebuild the HUD text when a value in the text changes. The overlay event fires each frame. */
