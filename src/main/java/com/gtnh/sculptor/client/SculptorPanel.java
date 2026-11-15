@@ -22,6 +22,7 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.SliderWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.gtnh.sculptor.SculptorMod;
 import com.gtnh.sculptor.brush.BrushSettings;
 import com.gtnh.sculptor.brush.SculptorBrush;
 import com.gtnh.sculptor.camera.CameraKeyframe;
@@ -57,6 +58,10 @@ public class SculptorPanel extends CustomModularScreen {
 
     // the panel is a new screen on each open. The result of the last save or load stays for the next open
     private static IKey pathStatus = IKey.EMPTY;
+
+    public SculptorPanel() {
+        super(SculptorMod.MOD_ID);
+    }
 
     @Override
     public ModularPanel buildUI(ModularGuiContext context) {
@@ -261,15 +266,6 @@ public class SculptorPanel extends CustomModularScreen {
             panel.child(speedField(y, () -> settings.getPathSpeed(tier), value -> settings.setPathSpeed(tier, value)));
             y += 20;
         }
-
-        panel.child(
-            new TextWidget<>(IKey.lang("sculptor.panel.path_speeds.hint")).scale(0.8f)
-                .textAlign(Alignment.CenterLeft)
-                .left(RIGHT_X)
-                .width(COLUMN_WIDTH)
-                .top(y + 4)
-                .height(24));
-        y += 32;
 
         buildPathStorageRows(panel, settings, y);
     }

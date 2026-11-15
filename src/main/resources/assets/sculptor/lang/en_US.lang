@@ -103,7 +103,6 @@ sculptor.panel.auto_smooth.off=Auto-smooth: off
 sculptor.panel.camera=Camera (blocks/sec)
 sculptor.panel.fly_speed=Fly
 sculptor.panel.path_speeds=Keyframe approach speeds
-sculptor.panel.path_speeds.hint=The time of a segment is the segment length over the speed.
 sculptor.panel.path_file=Path file
 sculptor.panel.save=Save
 sculptor.panel.load=Load
