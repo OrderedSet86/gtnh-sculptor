@@ -77,6 +77,9 @@ public class SculptorPanel extends CustomModularScreen {
     private static final int USE_HELD_WIDTH = 80;
     private static final int HEIGHT_VARIATION_WIDTH = 110;
     private static final int LABEL_HEIGHT = 10;
+    // the step of the strength and auto-smooth sliders, 5%. SliderWidget.drawBackground() draws a tick mark at each
+    // step
+    private static final double PERCENT_STEP = 0.05D;
     private static final int BRUSH_LIST_ROW_HEIGHT = 14;
 
     // the panel is a new screen on each open. The open tab, the layer rows and the result of the last path save or load
@@ -181,6 +184,7 @@ public class SculptorPanel extends CustomModularScreen {
                     "sculptor.panel.strength",
                     () -> new Object[] { Math.round(settings.getStrength() * 100.0D) }),
                 new SliderWidget().bounds(0.05D, 1.0D)
+                    .stopper(PERCENT_STEP)
                     .value(new DoubleValue.Dynamic(settings::getStrength, settings::setStrength))).setEnabledIf(
                         row -> settings.getBrush()
                             .usesStrength()));
@@ -217,6 +221,7 @@ public class SculptorPanel extends CustomModularScreen {
                         : "sculptor.panel.auto_smooth",
                     () -> new Object[] { Math.round(settings.getAutoSmooth() * 100.0D) }),
                 new SliderWidget().bounds(0.0D, 1.0D)
+                    .stopper(PERCENT_STEP)
                     .value(new DoubleValue.Dynamic(settings::getAutoSmooth, settings::setAutoSmooth))).setEnabledIf(
                         row -> settings.getBrush()
                             .isAutoSmoothable()));
