@@ -355,22 +355,12 @@ brush tested on a plane is testing almost nothing.
 `run/server/server.properties` is set to **25566**, not 25565 — the maintainer runs another
 Minecraft server on the default port. Do not kill processes on 25565.
 
-**The changelog and the release notes are written in Simplified Technical English.** Not as a
-style preference — they are the artifact a stranger reads to decide whether to update, and STE is
-what keeps them readable when the writer is deep in the problem. The trap is that release notes
-feel like storytelling, so they attract metaphor ("eating the ground", "the wrong half of the
-bargain", "a pixel-by-pixel coin toss") and sentences that unwind a discovery in the order it
-happened. All of that went into this file before it was rewritten.
-
-Rules that matter most here: active voice, simple tenses, one idea per sentence, no phrasal verbs,
-no semicolons, and no metaphor. Keep every number. Lint before committing:
-
-```sh
-python3 ~/.claude/skills/ste-writing/ste-lint.py CHANGELOG.md   # target: under 2.5 per 100 words
-```
-
-The file scores 0.71 at the time of writing. Write the entry for the reader, not for the log: a
-fix that took four attempts is one entry, not four.
+**Write the changelog by the rules of `/nar:core`.** The release notes are a published page, and
+the page rules of `nar:core` are the rules for the notes. The checks of a page are in the
+`verify.py` of the `nar:gtnh` skill. Before committing a section, run that `verify.py` with
+`--since HEAD CHANGELOG.md`, fix every finding, and read the three review lists of the run.
+Keep every number. Write one entry for each change that a player sees, and not one entry for each
+attempt at a fix.
 
 **Write the changelog section before releasing.** The release body is assembled from
 `.github/release-preamble.md` — which holds the install prose and a `<!-- changelog -->` marker —

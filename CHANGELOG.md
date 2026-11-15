@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.5.0
+
+**Update the client and the server together.** A brush stroke between 0.4.0 and 0.5.0 fails or
+runs with wrong settings.
+
+### Added
+
+- **`/sclayers` fills the WorldEdit selection in bands of altitude.** With
+  `/sclayers 10:stone *:grass 10:bedrock -s 3`, the top 10 blocks are stone, the bottom 10 are
+  bedrock, and grass fills the blocks between. Air stays air. `-s N` moves the band edges up and
+  down by up to N blocks, in waves. `//undo` reverts the fill, and `/scu` does not.
+- **The panel has a Layers tab for the same fill**, with up to 5 layers.
+- **"Replace only this block" has a separate block to replace**, in a row under the mode button.
+  The brush changes only that block, for a carving brush too: an air brush with dirt to replace
+  removes only dirt.
+- **You can take air as the material from an empty hand**, to carve.
+- **You can use the hotbar keys while the panel is open.**
+
+### Changed
+
+- **The editor panel has three tabs: Brush, Layers and Camera**, and fits on the screen at
+  1920×1080 with the automatic GUI scale.
+- **You pick the brush from a menu.**
+- **A setting that does nothing for the current brush is hidden.** The Iterations slider of
+  Smooth goes from 1 to 8.
+- **The material setting has clearer names**: *New blocks: match terrain* and *New blocks: brush
+  material*.
+- **Each block row has the block icon and the item name**, for example Pink Wool.
+- **The HUD is in the top-left corner, on a dark background**, clear of the chat.
+- **The free camera starts 4 blocks behind and 2 blocks above you**, not inside the head of your
+  player model.
+- **The Strength and Auto-smooth sliders have tick marks**, in steps of 5%.
+- **You can translate Sculptor with a resource pack.**
+
+### Fixes
+
+- **Carving with auto-smooth on is the same in both overhang modes.** In cantilever mode, the
+  carved area was not smoothed. In fill-to-ground mode, the preview had extra red boxes.
+
+
 ## 0.4.0
 
 Most of this release is about auto-smooth. It did several things it must not do.
